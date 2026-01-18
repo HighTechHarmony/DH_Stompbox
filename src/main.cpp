@@ -96,18 +96,25 @@ float currentChordTonic = 440.0f; // current tonic being played
 // Key and mode configuration
 int currentKey = 0;               // 0=C, 1=C#, 2=D, etc. (chromatic scale)
 bool currentModeIsMajor = true;   // true=major, false=minor
+int currentOctaveShift = 0;       // -1..2
 
 // NVRAM (EEPROM) layout
 #define NVRAM_SIGNATURE_ADDR 0
 #define NVRAM_SIGNATURE 0xA5
 #define NVRAM_KEY_ADDR 1
 #define NVRAM_MODE_ADDR 2
+#define NVRAM_OCTAVE_ADDR 3
 
 void saveNVRAM()
 {
     EEPROM.write(NVRAM_SIGNATURE_ADDR, NVRAM_SIGNATURE);
     EEPROM.write(NVRAM_KEY_ADDR, (uint8_t)currentKey);
     EEPROM.write(NVRAM_MODE_ADDR, (uint8_t)(currentModeIsMajor ? 1 : 0));
+    // store octave shifted by +2 to fit into unsigned byte (valid -1..2 -> 1..4)
+    int8_t enc = currentOctaveShift + 2;
+    if (enc < 0) enc = 0;
+    if (enc > 255) enc = 255;
+    EEPROM.write(NVRAM_OCTAVE_ADDR, (uint8_t)enc);
 }
 
 void loadNVRAM()
@@ -122,6 +129,18 @@ void loadNVRAM()
         Serial.print(currentKey);
         Serial.print(" mode=");
         Serial.println(currentModeIsMajor ? "Major" : "Minor");
+        // load octave (stored as +2 offset)
+        uint8_t oe = EEPROM.read(NVRAM_OCTAVE_ADDR);
+        if (oe >= 1 && oe <= 5) // sanity check (1..5 corresponds to -1..3 but we expect 1..4)
+        {
+            int8_t decoded = (int8_t)oe - 2;
+            if (decoded >= -1 && decoded <= 2)
+            {
+                currentOctaveShift = decoded;
+            }
+        }
+        Serial.print(" octave=");
+        Serial.println(currentOctaveShift);
     }
     else
     {
@@ -148,15 +167,16 @@ unsigned long lastEncoderActivityMs = 0;
 const unsigned long SCREEN_TIMEOUT_MS = 5000;  // 5 seconds
 
 // Menu state
-enum MenuLevel { MENU_TOP, MENU_KEY_SELECT, MENU_MODE_SELECT };
+enum MenuLevel { MENU_TOP, MENU_KEY_SELECT, MENU_MODE_SELECT, MENU_OCTAVE_SELECT };
 MenuLevel currentMenuLevel = MENU_TOP;
 int menuTopIndex = 0;        // 0=Key, 1=Mode
 int menuKeyIndex = 0;        // 0-11 for key selection
 int menuModeIndex = 0;       // 0=Major, 1=Minor
+int menuOctaveIndex = 1;     // index into octave options (default 0)
 
 // Menu display names
-const char* menuTopItems[] = {"Key", "Mode"};
-const int MENU_TOP_COUNT = 2;
+const char* menuTopItems[] = {"Key", "Mode", "Octave"};
+const int MENU_TOP_COUNT = 3;
 
 const char* keyMenuNames[] = {"A", "Bb", "B", "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab"};
 const int KEY_MENU_COUNT = 12;
@@ -165,6 +185,11 @@ const int keyMenuToChromatic[] = {9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8}; // A, B
 
 const char* modeMenuNames[] = {"Major", "Minor"};
 const int MODE_MENU_COUNT = 2;
+
+// Octave options
+const int octaveOptions[] = {-1, 0, 1, 2};
+const char* octaveMenuNames[] = {"-1", "0", "1", "2"};
+const int OCTAVE_MENU_COUNT = 4;
 
 // Pin Assignments
 const int ENC_A = 2;
@@ -281,9 +306,11 @@ void startChord(float potNorm = 0.5f, float tonicFreq = 0.0f, int keyNote = 0, b
     const float third = getDiatonicThird(tonic, keyNote, isMajor);
     const float fifth = powf(2.0f, 7.0f / 12.0f);      // +7 semitones
 
-    myEffect.frequency(tonic);
-    myEffect2.frequency(tonic * third);
-    myEffect3.frequency(tonic * fifth);
+    // apply octave shift
+    float octaveMul = powf(2.0f, (float)currentOctaveShift);
+    myEffect.frequency(tonic * octaveMul);
+    myEffect2.frequency(tonic * third * octaveMul);
+    myEffect3.frequency(tonic * fifth * octaveMul);
 
     // distribute amplitude to avoid clipping (sum ~= potNorm)
     float perVoice = potNorm / 3.0f;
@@ -312,9 +339,11 @@ void updateChordTonic(float tonicFreq, int keyNote = 0, bool isMajor = true)
     const float third = getDiatonicThird(tonicFreq, keyNote, isMajor);
     const float fifth = powf(2.0f, 7.0f / 12.0f);      // +7 semitones
 
-    myEffect.frequency(tonicFreq);
-    myEffect2.frequency(tonicFreq * third);
-    myEffect3.frequency(tonicFreq * fifth);
+    // apply octave shift
+    float octaveMul = powf(2.0f, (float)currentOctaveShift);
+    myEffect.frequency(tonicFreq * octaveMul);
+    myEffect2.frequency(tonicFreq * third * octaveMul);
+    myEffect3.frequency(tonicFreq * fifth * octaveMul);
 
     Serial.println(">>> CHORD UPDATE tonic " + String(tonicFreq) + "Hz");
 }
@@ -730,6 +759,12 @@ void loop()
                 if (menuModeIndex < 0) menuModeIndex = 0;
                 if (menuModeIndex > MODE_MENU_COUNT) menuModeIndex = MODE_MENU_COUNT; // allow Parent
             }
+            else if (currentMenuLevel == MENU_OCTAVE_SELECT)
+            {
+                menuOctaveIndex += delta;
+                if (menuOctaveIndex < 0) menuOctaveIndex = 0;
+                if (menuOctaveIndex > OCTAVE_MENU_COUNT) menuOctaveIndex = OCTAVE_MENU_COUNT; // allow Parent
+            }
         }
 
         lastEncoderPosition = encoderPosition;
@@ -770,6 +805,19 @@ void loop()
                     currentMenuLevel = MENU_MODE_SELECT;
                     menuModeIndex = currentModeIsMajor ? 0 : 1;
                 }
+                else if (menuTopIndex == 2) // Octave
+                {
+                    currentMenuLevel = MENU_OCTAVE_SELECT;
+                    // Initialize octave index from currentOctaveShift
+                    for (int i = 0; i < OCTAVE_MENU_COUNT; i++)
+                    {
+                        if (octaveOptions[i] == currentOctaveShift)
+                        {
+                            menuOctaveIndex = i;
+                            break;
+                        }
+                    }
+                }
                 else if (menuTopIndex == MENU_TOP_COUNT)
                 {
                     // Parent selected at top -> exit to main screen
@@ -802,6 +850,25 @@ void loop()
                 {
                     currentModeIsMajor = (menuModeIndex == 0);
                     saveNVRAM();
+                    currentMenuLevel = MENU_TOP;
+                }
+            }
+            else if (currentMenuLevel == MENU_OCTAVE_SELECT)
+            {
+                // If Parent selected, return to top. Otherwise apply octave shift.
+                if (menuOctaveIndex == OCTAVE_MENU_COUNT)
+                {
+                    currentMenuLevel = MENU_TOP;
+                }
+                else
+                {
+                    currentOctaveShift = octaveOptions[menuOctaveIndex];
+                    saveNVRAM();
+                    // apply immediately if chord active
+                    if (chordActive)
+                    {
+                        updateChordTonic(currentChordTonic, currentKey, currentModeIsMajor);
+                    }
                     currentMenuLevel = MENU_TOP;
                 }
             }
@@ -997,6 +1064,39 @@ void loop()
 
                 if (idx < MODE_MENU_COUNT)
                     display.println(modeMenuNames[idx]);
+                else
+                    display.println("^");
+            }
+        }
+        else if (currentMenuLevel == MENU_OCTAVE_SELECT)
+        {
+            // Octave selection submenu - show current menu name at top
+            display.setCursor(0, 0);
+            display.println(menuTopItems[2]);
+
+            int totalCount = OCTAVE_MENU_COUNT + 1; // includes Parent
+            int visible = 3;
+            int startIdx = menuOctaveIndex - 1;
+            if (startIdx < 0) startIdx = 0;
+            if (startIdx > totalCount - visible) startIdx = totalCount - visible;
+            if (startIdx < 0) startIdx = 0;
+
+            for (int i = 0; i < visible; i++)
+            {
+                int idx = startIdx + i;
+                int y = 18 + i * 18;
+                display.setCursor(0, y);
+                if (idx == menuOctaveIndex)
+                {
+                    display.print("> ");
+                }
+                else
+                {
+                    display.print("  ");
+                }
+
+                if (idx < OCTAVE_MENU_COUNT)
+                    display.println(octaveMenuNames[idx]);
                 else
                     display.println("^");
             }
