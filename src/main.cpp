@@ -47,6 +47,9 @@ float lastDetectedFrequency = 0.0f;
 bool chordActive = false;
 bool chordSuppressed = true;      // when true, automatic restart is disabled (e.g., FS2 pressed)
 float currentChordTonic = 440.0f; // current tonic being played
+// Key and mode configuration
+int currentKey = 0;               // 0=C, 1=C#, 2=D, etc. (chromatic scale)
+bool currentModeIsMajor = true;   // true=major, false=minor
 // fade state for graceful stop
 bool chordFading = false;
 unsigned long chordFadeStartMs = 0;
@@ -113,7 +116,45 @@ bool beepActive = false;
 unsigned long beepEndMillis = 0;
 float beepAmp = 0.5f;
 
-void startChord(float potNorm = 0.5f, float tonicFreq = 0.0f)
+// Helper function to get diatonic third interval (in semitones) for a given note
+// within a specified key and mode
+float getDiatonicThird(float noteFreq, int keyNote, bool isMajor)
+{
+    // Convert frequency to MIDI note number
+    float midiNote = 12.0f * log2f(noteFreq / 440.0f) + 69.0f;
+    int noteClass = ((int)round(midiNote)) % 12; // 0-11 chromatic position
+    
+    // Calculate position in scale relative to key
+    int relativePosition = (noteClass - keyNote + 12) % 12;
+    
+    // Determine the third interval based on scale degree
+    // Major scale intervals: W-W-H-W-W-W-H (steps from root: 0,2,4,5,7,9,11)
+    // Natural minor scale intervals: W-H-W-W-H-W-W (steps from root: 0,2,3,5,7,8,10)
+    
+    int thirdSemitones = 3; // default to minor third
+    
+    if (isMajor) {
+        // Major scale: major thirds on scale degrees I, IV, V (positions 0, 5, 7)
+        if (relativePosition == 0 || relativePosition == 5 || relativePosition == 7) {
+            thirdSemitones = 4; // major third
+        } else if (relativePosition == 2 || relativePosition == 4 || relativePosition == 9 || relativePosition == 11) {
+            thirdSemitones = 3; // minor third
+        }
+        // For diminished chord (degree VII, position 11), use minor third
+    } else {
+        // Natural minor scale: major thirds on scale degrees III, VI, VII (positions 3, 8, 10)
+        if (relativePosition == 3 || relativePosition == 8 || relativePosition == 10) {
+            thirdSemitones = 4; // major third
+        } else if (relativePosition == 0 || relativePosition == 2 || relativePosition == 5 || relativePosition == 7) {
+            thirdSemitones = 3; // minor third
+        }
+        // For diminished chord (degree II, position 2), use minor third
+    }
+    
+    return powf(2.0f, thirdSemitones / 12.0f);
+}
+
+void startChord(float potNorm = 0.5f, float tonicFreq = 0.0f, int keyNote = 0, bool isMajor = true)
 {
     // choose tonic: passed in or last detected
     float tonic = (tonicFreq > 1.0f) ? tonicFreq : lastDetectedFrequency;
@@ -126,12 +167,12 @@ void startChord(float potNorm = 0.5f, float tonicFreq = 0.0f)
     // cancel any fade in progress
     chordFading = false;
 
-    // compute minor triad intervals (equal temperament)
-    const float minorThird = powf(2.0f, 3.0f / 12.0f); // +3 semitones
+    // compute triad intervals (diatonic third, perfect fifth)
+    const float third = getDiatonicThird(tonic, keyNote, isMajor);
     const float fifth = powf(2.0f, 7.0f / 12.0f);      // +7 semitones
 
     myEffect.frequency(tonic);
-    myEffect2.frequency(tonic * minorThird);
+    myEffect2.frequency(tonic * third);
     myEffect3.frequency(tonic * fifth);
 
     // distribute amplitude to avoid clipping (sum ~= potNorm)
@@ -150,40 +191,24 @@ void startChord(float potNorm = 0.5f, float tonicFreq = 0.0f)
     chordActive = true;
 }
 
-void updateChordTonic(float tonicFreq)
+void updateChordTonic(float tonicFreq, int keyNote = 0, bool isMajor = true)
 {
     if (!chordActive || tonicFreq <= 0.0f)
         return;
 
     currentChordTonic = tonicFreq;
 
-    // compute minor triad intervals (equal temperament)
-    const float minorThird = powf(2.0f, 3.0f / 12.0f); // +3 semitones
+    // compute triad intervals (diatonic third, perfect fifth)
+    const float third = getDiatonicThird(tonicFreq, keyNote, isMajor);
     const float fifth = powf(2.0f, 7.0f / 12.0f);      // +7 semitones
 
     myEffect.frequency(tonicFreq);
-    myEffect2.frequency(tonicFreq * minorThird);
+    myEffect2.frequency(tonicFreq * third);
     myEffect3.frequency(tonicFreq * fifth);
 
     Serial.println(">>> CHORD UPDATE tonic " + String(tonicFreq) + "Hz");
 }
 
-// Legacy function for timed beeps (kept for compatibility)
-void startBeep(int durationMs, float potNorm = 0.5f, float tonicFreq = 0.0f)
-{
-    startChord(potNorm, tonicFreq);
-    beepEndMillis = millis() + (unsigned long)durationMs;
-    beepActive = true;
-}
-
-void stopBeep()
-{
-    if (!beepActive)
-        return;
-    // Only stop if using timed beep mode, not continuous chord
-    beepActive = false;
-    // Note: chord continues playing - use stopChord() to fully stop
-}
 
 void stopChord()
 {
@@ -213,14 +238,6 @@ void stopChord()
     // suppress automatic restart after an explicit stop (e.g., FS2 press)
     chordSuppressed = true;
     Serial.println(">>> CHORD END");
-}
-
-void updateBeep()
-{
-    if (beepActive && (long)(millis() - beepEndMillis) >= 0)
-    {
-        stopBeep();
-    }
 }
 
 void updateChordVolume(float potNorm)
@@ -306,6 +323,13 @@ void setup()
     Serial.print(inputGain);
     Serial.print(", synth gain ");
     Serial.println(synthGain);
+
+    Serial.println("Playing startup beep 100ms @ 0.7");
+    myEffect.frequency(1000);
+    myEffect.amplitude(0.7);
+    delay(100);
+    myEffect.amplitude(0);
+    Serial.println("Startup beep complete");
 
     // Pins
     pinMode(ENC_A, INPUT_PULLUP);
@@ -401,7 +425,7 @@ void loop()
     // Restart chord if not active (ensure continuous playback)
     if (!chordActive && !chordSuppressed)
     {
-        startChord(potNorm, currentChordTonic);
+        startChord(potNorm, currentChordTonic, currentKey, currentModeIsMajor);
     }
 
     bool encButton = !digitalRead(ENC_BTN);
@@ -420,7 +444,7 @@ void loop()
         if (chordSuppressed)
         {
             float tonicToUse = (lastDetectedFrequency > 1.0f) ? lastDetectedFrequency : currentChordTonic;
-            startChord(potNorm, tonicToUse);
+            startChord(potNorm, tonicToUse, currentKey, currentModeIsMajor);
         }
     }
 
@@ -448,7 +472,7 @@ void loop()
             lastDetectedFrequency = normalizedFreq;
 
             // Update chord in real-time while sampling
-            updateChordTonic(normalizedFreq);
+            updateChordTonic(normalizedFreq, currentKey, currentModeIsMajor);
         }
 
         // Simple note name lookup (A4 = 440 Hz)
@@ -535,9 +559,6 @@ void loop()
     display.println(fs2 ? "ON" : "off");
 
     display.display();
-
-    // handle non-blocking beep termination (for timed beeps if used)
-    updateBeep();
 
     // Track FS1/FS2 state for next iteration
     prevFs1 = fs1;
