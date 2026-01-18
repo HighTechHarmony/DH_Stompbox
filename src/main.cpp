@@ -104,6 +104,12 @@ float chordFadeStartAmp = 0.0f;
 unsigned long fs1ForcedUntilMs = 0;
 const unsigned long FS1_MIN_ACTIVATION_MS = 500;  // Window of time after FS1 press that tracking is on
 
+// UI screen state
+enum ScreenMode { SCREEN_HOME, SCREEN_MENU, SCREEN_FADE };
+ScreenMode currentScreen = SCREEN_HOME;
+unsigned long lastEncoderActivityMs = 0;
+const unsigned long SCREEN_TIMEOUT_MS = 2000;  // 2 seconds
+
 // Pin Assignments
 const int ENC_A = 2;
 const int ENC_B = 3;
@@ -472,6 +478,8 @@ void loop()
             chordSuppressed = true;
             beepAmp = 0.0f;
             Serial.println(">>> CHORD END (fade complete)");
+            // return to home screen after fade completes
+            currentScreen = SCREEN_HOME;
         }
         else
         {
@@ -531,6 +539,16 @@ void loop()
     if (fs2 && !prevFs2)
     {
         stopChord();
+        // show fade progress screen only if a fade was actually started
+        if (chordFading)
+        {
+            currentScreen = SCREEN_FADE;
+        }
+        else
+        {
+            // No fade to show; return to home immediately
+            currentScreen = SCREEN_HOME;
+        }
     }
 
     // FS1 press edge: if chord was suppressed (stopped by FS2), re-enable it
@@ -616,6 +634,27 @@ void loop()
         }
     }
 
+    // Detect encoder activity for UI timeout
+    static int lastEncoderPosition = 0;
+    static bool lastEncButton = false;
+    
+    if (encoderPosition != lastEncoderPosition || encButton != lastEncButton)
+    {
+        lastEncoderActivityMs = now;
+        if (currentScreen == SCREEN_HOME)
+        {
+            currentScreen = SCREEN_MENU;
+        }
+        lastEncoderPosition = encoderPosition;
+        lastEncButton = encButton;
+    }
+    
+    // Timeout back to home screen after inactivity
+    if (currentScreen == SCREEN_MENU && (now - lastEncoderActivityMs) > SCREEN_TIMEOUT_MS)
+    {
+        currentScreen = SCREEN_HOME;
+    }
+
     // Serial output
     int rawBtn = digitalRead(ENC_BTN);
     int rawFS1 = digitalRead(FOOT1);
@@ -648,45 +687,109 @@ void loop()
     Serial.print(probability, 2);
     Serial.println(")");
 
-    // OLED output with adjustable line spacing
+    // OLED output - show appropriate screen
     display.clearDisplay();
-
-    int ts = 1; // text size
-    display.setTextSize(ts);
     display.setTextColor(SSD1306_WHITE);
 
-    const int fontHeight = 8;
-    const int extraSpacing = 2;
-    const int lineHeight = fontHeight * ts + extraSpacing;
+    if (currentScreen == SCREEN_HOME)
+    {
+        // Home screen with larger font
+        display.setTextSize(2);
+        
+        int y = 0;
+        
+        // Display key and mode
+        display.setCursor(0, y);
+        display.print("Key: ");
+        const char *keyNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+        display.print(keyNames[currentKey]);
+        if (!currentModeIsMajor)
+        {
+            display.print("m");
+        }
+        y += 20;
+        
+        // Display detected note and frequency
+        display.setCursor(0, y);
+        display.setTextSize(2);
+        display.print("Note: ");
+        display.print(noteName);
+        y += 20;
 
-    int y = 0;
-    display.setCursor(0, y);
-    display.println("DH Stomp");
-    y += lineHeight;
-
-    display.setCursor(0, y);
-    display.print("Note: ");
-    display.print(noteName);
-    display.print(" ");
-    display.print(frequency, 1);
-    display.println("Hz");
-    y += lineHeight;
-
-    display.setCursor(0, y);
-    display.print("Enc: ");
-    display.println(encoderPosition);
-    y += lineHeight;
-
-    display.setCursor(0, y);
-    display.print("Btn: ");
-    display.println(encButton ? "PRESSED" : "released");
-    y += lineHeight;
-
-    display.setCursor(0, y);
-    display.print("FS1: ");
-    display.print(fs1 ? "ON " : "off");
-    display.print(" FS2: ");
-    display.println(fs2 ? "ON" : "off");
+        // Display a tuner bar graph that shows deviation from nearest semitone
+        if (frequency > 0.0f)
+        {
+            // Calculate deviation from nearest semitone in cents
+            float n = 12.0 * log2f(frequency / 440.0) + 69.0;
+            int nearestNote = (int)(n + 0.5);
+            float cents = (n - nearestNote) * 100.0f; // deviation in cents
+            // Draw bar graph
+            int barWidth = map(cents, -50, 50, -30, 30); // map -50 to +50 cents to -30 to +30 pixels
+            display.drawRect(0, y, 64, 10, SSD1306_WHITE);
+            if (barWidth < 0)
+            {
+                display.fillRect(32 + barWidth, y + 1, -barWidth, 8, SSD1306_WHITE);
+            }
+            else
+            {
+                display.fillRect(32, y + 1, barWidth, 8, SSD1306_WHITE);
+            }
+            y += 15;
+            display.setTextSize(1);
+            display.setCursor(0, y);
+            display.print(frequency, 1);
+            display.print(" Hz");
+        }                
+        
+    }
+    else if (currentScreen == SCREEN_MENU)
+    {
+        // Menu screen
+        display.setTextSize(2);
+        display.setCursor(0, 0);
+        display.println("Menu");
+        
+        display.setTextSize(1);
+        // Future menu items will go here
+    }
+    else if (currentScreen == SCREEN_FADE)
+    {
+        // Fullscreen fade progress bar
+        display.setTextSize(1);
+        // if no fade is actually in progress, go back to home to avoid a blank screen
+        if (!chordFading)
+        {
+            currentScreen = SCREEN_HOME;
+        }
+        else
+        {
+            // compute progress (0..1)
+            float progress = 0.0f;
+            if (chordFadeDurationMs > 0)
+            {
+                unsigned long nowMs = millis();
+                long elapsed = (long)(nowMs - chordFadeStartMs);
+                if (elapsed < 0) elapsed = 0;
+                if (elapsed > (long)chordFadeDurationMs) elapsed = chordFadeDurationMs;
+                progress = (float)elapsed / (float)chordFadeDurationMs;
+            }
+            int barW = SCREEN_WIDTH - (int)(progress * (float)SCREEN_WIDTH);
+        // draw filled bar (starts full and empties as progress increases)
+        display.fillRect(0, 0, barW, SCREEN_HEIGHT, SSD1306_WHITE);
+        // draw the word "FADEOUT" in inverse color centered
+        char buf[8];
+        // int pct = (int)(progress * 100.0f + 0.5f);
+        sprintf(buf, "%s", "FADEOUT");
+        display.setTextSize(2);
+        display.setTextColor(SSD1306_BLACK);
+        int tx = (SCREEN_WIDTH - (6 * strlen(buf))) / 2; // approx width per char
+        int ty = (SCREEN_HEIGHT / 2) - 8;
+        if (tx < 0) tx = 0;
+        display.setCursor(tx, ty);
+        display.println(buf);
+        display.setTextColor(SSD1306_WHITE);
+    }
+    }
 
     display.display();
 
