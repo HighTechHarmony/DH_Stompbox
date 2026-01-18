@@ -108,7 +108,26 @@ const unsigned long FS1_MIN_ACTIVATION_MS = 500;  // Window of time after FS1 pr
 enum ScreenMode { SCREEN_HOME, SCREEN_MENU, SCREEN_FADE };
 ScreenMode currentScreen = SCREEN_HOME;
 unsigned long lastEncoderActivityMs = 0;
-const unsigned long SCREEN_TIMEOUT_MS = 2000;  // 2 seconds
+const unsigned long SCREEN_TIMEOUT_MS = 5000;  // 5 seconds
+
+// Menu state
+enum MenuLevel { MENU_TOP, MENU_KEY_SELECT, MENU_MODE_SELECT };
+MenuLevel currentMenuLevel = MENU_TOP;
+int menuTopIndex = 0;        // 0=Key, 1=Mode
+int menuKeyIndex = 0;        // 0-11 for key selection
+int menuModeIndex = 0;       // 0=Major, 1=Minor
+
+// Menu display names
+const char* menuTopItems[] = {"Key", "Mode"};
+const int MENU_TOP_COUNT = 2;
+
+const char* keyMenuNames[] = {"A", "Bb", "B", "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab"};
+const int KEY_MENU_COUNT = 12;
+// Map menu index to chromatic scale (C=0, C#=1, ... B=11)
+const int keyMenuToChromatic[] = {9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8}; // A, Bb, B, C, C#, D, D#, E, F, F#, G, G#
+
+const char* modeMenuNames[] = {"Major", "Minor"};
+const int MODE_MENU_COUNT = 2;
 
 // Pin Assignments
 const int ENC_A = 2;
@@ -500,6 +519,7 @@ void loop()
     }
 
     bool encButton = !digitalRead(ENC_BTN);
+    static bool prevEncButton = false;
     bool fs1_raw = !digitalRead(FOOT1);
     bool fs2 = !digitalRead(FOOT2);
 
@@ -634,25 +654,123 @@ void loop()
         }
     }
 
-    // Detect encoder activity for UI timeout
+    // Detect encoder activity for UI timeout and menu navigation
     static int lastEncoderPosition = 0;
-    static bool lastEncButton = false;
     
-    if (encoderPosition != lastEncoderPosition || encButton != lastEncButton)
+    if (encoderPosition != lastEncoderPosition)
     {
         lastEncoderActivityMs = now;
         if (currentScreen == SCREEN_HOME)
         {
             currentScreen = SCREEN_MENU;
+            currentMenuLevel = MENU_TOP;
         }
+
+        // Handle encoder changes based on current menu level
+        if (currentScreen == SCREEN_MENU)
+        {
+                                            // REVERSED direction: turning encoder one way now moves selection opposite
+            int delta = lastEncoderPosition - encoderPosition;
+
+            if (currentMenuLevel == MENU_TOP)
+            {
+                menuTopIndex += delta;
+                if (menuTopIndex < 0) menuTopIndex = 0;
+                if (menuTopIndex > MENU_TOP_COUNT) menuTopIndex = MENU_TOP_COUNT; // allow Parent as final entry
+            }
+            else if (currentMenuLevel == MENU_KEY_SELECT)
+            {
+                menuKeyIndex += delta;
+                if (menuKeyIndex < 0) menuKeyIndex = 0;
+                if (menuKeyIndex > KEY_MENU_COUNT) menuKeyIndex = KEY_MENU_COUNT; // allow Parent
+            }
+            else if (currentMenuLevel == MENU_MODE_SELECT)
+            {
+                menuModeIndex += delta;
+                if (menuModeIndex < 0) menuModeIndex = 0;
+                if (menuModeIndex > MODE_MENU_COUNT) menuModeIndex = MODE_MENU_COUNT; // allow Parent
+            }
+        }
+
         lastEncoderPosition = encoderPosition;
-        lastEncButton = encButton;
+    }
+    
+    // Handle encoder button press for menu selection
+    if (encButton && !prevEncButton)  // button press edge
+    {
+        // If at home, button now brings up the menu
+        if (currentScreen == SCREEN_HOME)
+        {
+            currentScreen = SCREEN_MENU;
+            currentMenuLevel = MENU_TOP;
+            lastEncoderActivityMs = now;
+        }
+        else if (currentScreen == SCREEN_MENU)
+        {
+            lastEncoderActivityMs = now;  // keep menu active
+
+            if (currentMenuLevel == MENU_TOP)
+            {
+                // Enter submenu based on selected top-level item or handle Parent
+                if (menuTopIndex == 0)  // Key
+                {
+                    currentMenuLevel = MENU_KEY_SELECT;
+                    // Initialize to current key
+                    for (int i = 0; i < KEY_MENU_COUNT; i++)
+                    {
+                        if (keyMenuToChromatic[i] == currentKey)
+                        {
+                            menuKeyIndex = i;
+                            break;
+                        }
+                    }
+                }
+                else if (menuTopIndex == 1)  // Mode
+                {
+                    currentMenuLevel = MENU_MODE_SELECT;
+                    menuModeIndex = currentModeIsMajor ? 0 : 1;
+                }
+                else if (menuTopIndex == MENU_TOP_COUNT)
+                {
+                    // Parent selected at top -> exit to main screen
+                    currentScreen = SCREEN_HOME;
+                    currentMenuLevel = MENU_TOP;
+                }
+            }
+            else if (currentMenuLevel == MENU_KEY_SELECT)
+            {
+                // If Parent selected, just return to top. Otherwise apply key.
+                if (menuKeyIndex == KEY_MENU_COUNT)
+                {
+                    currentMenuLevel = MENU_TOP;
+                }
+                else
+                {
+                    currentKey = keyMenuToChromatic[menuKeyIndex];
+                    currentMenuLevel = MENU_TOP;
+                }
+            }
+            else if (currentMenuLevel == MENU_MODE_SELECT)
+            {
+                // If Parent selected, return to top. Otherwise apply mode.
+                if (menuModeIndex == MODE_MENU_COUNT)
+                {
+                    currentMenuLevel = MENU_TOP;
+                }
+                else
+                {
+                    currentModeIsMajor = (menuModeIndex == 0);
+                    currentMenuLevel = MENU_TOP;
+                }
+            }
+        }
     }
     
     // Timeout back to home screen after inactivity
     if (currentScreen == SCREEN_MENU && (now - lastEncoderActivityMs) > SCREEN_TIMEOUT_MS)
     {
         currentScreen = SCREEN_HOME;
+        currentMenuLevel = MENU_TOP;  // Reset to top level when timing out
     }
 
     // Serial output
@@ -744,13 +862,103 @@ void loop()
     }
     else if (currentScreen == SCREEN_MENU)
     {
-        // Menu screen
+        // Menu screen - show current menu level
         display.setTextSize(2);
-        display.setCursor(0, 0);
-        display.println("Menu");
-        
-        display.setTextSize(1);
-        // Future menu items will go here
+
+        if (currentMenuLevel == MENU_TOP)
+        {
+            // Top-level menu
+            display.setCursor(0, 0);
+            display.println("Menu");
+
+            // Show top items + Parent at end
+            int visibleCount = MENU_TOP_COUNT + 1; // includes Parent
+            for (int i = 0; i < visibleCount; i++)
+            {
+                int y = 18 + i * 18;
+                display.setCursor(0, y);
+                if (i == menuTopIndex)
+                {
+                    display.print("> ");
+                }
+                else
+                {
+                    display.print("  ");
+                }
+
+                if (i < MENU_TOP_COUNT)
+                    display.println(menuTopItems[i]);
+                else
+                    display.println("^ Parent");
+            }
+        }
+        else if (currentMenuLevel == MENU_KEY_SELECT)
+        {
+            // Key selection submenu - show current menu name at top
+            display.setCursor(0, 0);
+            display.println(menuTopItems[0]);
+
+            // Build a scrolling view over keys + Parent
+            int totalCount = KEY_MENU_COUNT + 1; // includes Parent
+            int visible = 3; // number of lines to show (fits size2)
+            int startIdx = menuKeyIndex - 1;
+            if (startIdx < 0) startIdx = 0;
+            if (startIdx > totalCount - visible) startIdx = totalCount - visible;
+            if (startIdx < 0) startIdx = 0;
+
+            for (int i = 0; i < visible; i++)
+            {
+                int idx = startIdx + i;
+                int y = 18 + i * 18;
+                display.setCursor(0, y);
+                if (idx == menuKeyIndex)
+                {
+                    display.print("> ");
+                }
+                else
+                {
+                    display.print("  ");
+                }
+
+                if (idx < KEY_MENU_COUNT)
+                    display.println(keyMenuNames[idx]);
+                else
+                    display.println("^ Parent");
+            }
+        }
+        else if (currentMenuLevel == MENU_MODE_SELECT)
+        {
+            // Mode selection submenu - show current menu name at top
+            display.setCursor(0, 0);
+            display.println(menuTopItems[1]);
+
+            int totalCount = MODE_MENU_COUNT + 1; // includes Parent
+            int visible = 3;
+            int startIdx = menuModeIndex - 1;
+            if (startIdx < 0) startIdx = 0;
+            if (startIdx > totalCount - visible) startIdx = totalCount - visible;
+            if (startIdx < 0) startIdx = 0;
+
+            for (int i = 0; i < visible; i++)
+            {
+                int idx = startIdx + i;
+                int y = 18 + i * 18;
+                display.setCursor(0, y);
+                if (idx == menuModeIndex)
+                {
+                    display.print("> ");
+                }
+                else
+                {
+                    display.print("  ");
+                }
+
+                if (idx < MODE_MENU_COUNT)
+                    display.println(modeMenuNames[idx]);
+                else
+                    display.println("^ Parent");
+            }
+        }
     }
     else if (currentScreen == SCREEN_FADE)
     {
@@ -793,9 +1001,10 @@ void loop()
 
     display.display();
 
-    // Track raw FS1/FS2 state for edge detection next iteration
+    // Track raw FS1/FS2 and button state for edge detection next iteration
     prevFs1 = fs1_raw;
     prevFs2 = fs2;
+    prevEncButton = encButton;
 
     delay(50);
 }
