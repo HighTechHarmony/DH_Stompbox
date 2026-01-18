@@ -5,6 +5,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <core_pins.h>
+#include <EEPROM.h>
 
 // ----------------------
 // Configuration
@@ -95,6 +96,42 @@ float currentChordTonic = 440.0f; // current tonic being played
 // Key and mode configuration
 int currentKey = 0;               // 0=C, 1=C#, 2=D, etc. (chromatic scale)
 bool currentModeIsMajor = true;   // true=major, false=minor
+
+// NVRAM (EEPROM) layout
+#define NVRAM_SIGNATURE_ADDR 0
+#define NVRAM_SIGNATURE 0xA5
+#define NVRAM_KEY_ADDR 1
+#define NVRAM_MODE_ADDR 2
+
+void saveNVRAM()
+{
+    EEPROM.write(NVRAM_SIGNATURE_ADDR, NVRAM_SIGNATURE);
+    EEPROM.write(NVRAM_KEY_ADDR, (uint8_t)currentKey);
+    EEPROM.write(NVRAM_MODE_ADDR, (uint8_t)(currentModeIsMajor ? 1 : 0));
+}
+
+void loadNVRAM()
+{
+    if (EEPROM.read(NVRAM_SIGNATURE_ADDR) == NVRAM_SIGNATURE)
+    {
+        uint8_t k = EEPROM.read(NVRAM_KEY_ADDR);
+        if (k < 12) currentKey = k;
+        uint8_t m = EEPROM.read(NVRAM_MODE_ADDR);
+        currentModeIsMajor = (m == 1);
+        Serial.print("NVRAM: loaded key=");
+        Serial.print(currentKey);
+        Serial.print(" mode=");
+        Serial.println(currentModeIsMajor ? "Major" : "Minor");
+    }
+    else
+    {
+        // Not initialized: use defaults and write them
+        Serial.println("NVRAM: empty, using default C Major");
+        currentKey = 0; // C
+        currentModeIsMajor = true;
+        saveNVRAM();
+    }
+}
 // fade state for graceful stop
 bool chordFading = false;
 unsigned long chordFadeStartMs = 0;
@@ -377,6 +414,9 @@ void setup()
     // Initialize pitch detector
     noteDetect.begin(0.10); // threshold typical 0.15 (0.0 = very sensitive, 1.0 = very picky)
     Serial.println("Pitch detector initialized");
+
+    // Load saved Key/Mode from NVRAM (EEPROM). If empty, defaults to C Major.
+    loadNVRAM();
 
     // Configure mixers: boost input passthrough, lower synth to prevent clipping
     float inputGain = BOOST_INPUT_GAIN ? 1.5 : 1.0; // full volume passthrough
@@ -669,7 +709,7 @@ void loop()
         // Handle encoder changes based on current menu level
         if (currentScreen == SCREEN_MENU)
         {
-                                            // REVERSED direction: turning encoder one way now moves selection opposite
+                                             // REVERSED direction: turning encoder one way now moves selection opposite
             int delta = lastEncoderPosition - encoderPosition;
 
             if (currentMenuLevel == MENU_TOP)
@@ -747,6 +787,7 @@ void loop()
                 else
                 {
                     currentKey = keyMenuToChromatic[menuKeyIndex];
+                    saveNVRAM();
                     currentMenuLevel = MENU_TOP;
                 }
             }
@@ -760,6 +801,7 @@ void loop()
                 else
                 {
                     currentModeIsMajor = (menuModeIndex == 0);
+                    saveNVRAM();
                     currentMenuLevel = MENU_TOP;
                 }
             }
@@ -889,7 +931,7 @@ void loop()
                 if (i < MENU_TOP_COUNT)
                     display.println(menuTopItems[i]);
                 else
-                    display.println("^ Parent");
+                    display.println("^");
             }
         }
         else if (currentMenuLevel == MENU_KEY_SELECT)
@@ -923,7 +965,7 @@ void loop()
                 if (idx < KEY_MENU_COUNT)
                     display.println(keyMenuNames[idx]);
                 else
-                    display.println("^ Parent");
+                    display.println("^");
             }
         }
         else if (currentMenuLevel == MENU_MODE_SELECT)
@@ -956,7 +998,7 @@ void loop()
                 if (idx < MODE_MENU_COUNT)
                     display.println(modeMenuNames[idx]);
                 else
-                    display.println("^ Parent");
+                    display.println("^");
             }
         }
     }
