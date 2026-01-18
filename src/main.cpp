@@ -10,6 +10,7 @@
 // Configuration
 // ----------------------
 #define BOOST_INPUT_GAIN false // set to false to use 0.5 gain (no boost)
+#define SUPPRESS_CHORD_OUTPUT_DURING_TRANSITIONS true // when true, mute chord until FS1 forced window ends
 
 // Define audio objects
 AudioSynthWaveform myEffect;
@@ -97,8 +98,11 @@ bool currentModeIsMajor = true;   // true=major, false=minor
 // fade state for graceful stop
 bool chordFading = false;
 unsigned long chordFadeStartMs = 0;
-unsigned long chordFadeDurationMs = 2000; // default ramp down time (ms) - easily changeable
+unsigned long chordFadeDurationMs = 1500; //ramp down time (ms)
 float chordFadeStartAmp = 0.0f;
+
+unsigned long fs1ForcedUntilMs = 0;
+const unsigned long FS1_MIN_ACTIVATION_MS = 500;  // Window of time after FS1 press that tracking is on
 
 // Pin Assignments
 const int ENC_A = 2;
@@ -346,7 +350,7 @@ void setup()
     Serial.println("Waveforms initialized (3 voices for chord)");
 
     // Initialize pitch detector
-    noteDetect.begin(0.10); // threshold 0.15 (0.0 = very sensitive, 1.0 = very picky)
+    noteDetect.begin(0.10); // threshold typical 0.15 (0.0 = very sensitive, 1.0 = very picky)
     Serial.println("Pitch detector initialized");
 
     // Configure mixers: boost input passthrough, lower synth to prevent clipping
@@ -488,8 +492,40 @@ void loop()
     }
 
     bool encButton = !digitalRead(ENC_BTN);
-    bool fs1 = !digitalRead(FOOT1);
+    bool fs1_raw = !digitalRead(FOOT1);
     bool fs2 = !digitalRead(FOOT2);
+
+    // On raw press-edge, ensure FS1 remains true for at least the minimum window
+    if (fs1_raw && !prevFs1) {
+        fs1ForcedUntilMs = now + FS1_MIN_ACTIVATION_MS;
+    }
+
+    // Effective FS1 seen by the rest of the loop (remains true for short taps)
+    bool fs1 = fs1_raw || (now < fs1ForcedUntilMs);
+
+    // Optionally suppress chord audio output while the FS1 forced window is active
+    bool suppressChordDuringTransition = (SUPPRESS_CHORD_OUTPUT_DURING_TRANSITIONS && (now < fs1ForcedUntilMs));
+    if (suppressChordDuringTransition)
+    {
+        // Only mute if not currently fading (let fades complete)
+        if (!chordFading)
+        {
+            myEffect.amplitude(0);
+            myEffect2.amplitude(0);
+            myEffect3.amplitude(0);
+        }
+    }
+    else
+    {
+        // If chord is active and not fading, ensure amplitude reflects stored beepAmp
+        if (chordActive && !chordFading)
+        {
+            float perVoice = beepAmp / 3.0f;
+            myEffect.amplitude(perVoice);
+            myEffect2.amplitude(perVoice);
+            myEffect3.amplitude(perVoice);
+        }
+    }
 
     // FS2 press edge: stop chord immediately on initial press
     if (fs2 && !prevFs2)
@@ -498,7 +534,7 @@ void loop()
     }
 
     // FS1 press edge: if chord was suppressed (stopped by FS2), re-enable it
-    if (fs1 && !prevFs1)
+    if (fs1_raw && !prevFs1)
     {
         if (chordSuppressed)
         {
@@ -522,7 +558,7 @@ void loop()
 
         // Add raw frequency to median filter buffer
         freqBuf[freqBufIdx] = frequency;
-        freqBufIdx = (freqBufIdx + 1) % 5;
+        freqBufIdx = (freqBufIdx + 1) % 3;
 
         // Copy and sort for median calculation
         float sorted[5];
@@ -654,9 +690,9 @@ void loop()
 
     display.display();
 
-    // Track FS1/FS2 state for next iteration
-    prevFs1 = fs1;
+    // Track raw FS1/FS2 state for edge detection next iteration
+    prevFs1 = fs1_raw;
     prevFs2 = fs2;
 
-    delay(25);
+    delay(15);
 }
