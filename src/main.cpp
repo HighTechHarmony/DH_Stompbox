@@ -694,5 +694,5 @@ void loop()
     prevFs1 = fs1_raw;
     prevFs2 = fs2;
 
-    delay(15);
+    delay(50);
 }
