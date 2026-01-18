@@ -21,6 +21,31 @@ AudioMixer4 mixerLeft;                // Mix input + synth for left channel
 AudioMixer4 mixerRight;               // Mix input + synth for right channel
 AudioAnalyzeNoteFrequency noteDetect; // Pitch detection
 
+// Reverb + wet/dry mixers
+AudioEffectFreeverb reverb;       // stereo freeverb
+AudioMixer4 wetDryLeft;          // mix dry (mixerLeft) + wet (reverb L)
+AudioMixer4 wetDryRight;         // mix dry (mixerRight) + wet (reverb R)
+
+// Synth-only mixers (so reverb is applied only to synth voices)
+AudioMixer4 synthOnlyLeft;       // mix synth voices for left reverb input
+AudioMixer4 synthOnlyRight;      // mix synth voices for right reverb input
+
+// Reverb wet control (0.0 = dry, 1.0 = fully wet)
+float reverbWet = 0.10f;
+
+void setReverbWet(float wet)
+{
+    if (wet < 0.0f) wet = 0.0f;
+    if (wet > 1.0f) wet = 1.0f;
+    reverbWet = wet;
+    float dryGain = 1.0f - reverbWet;
+    float wetGain = reverbWet;
+    wetDryLeft.gain(0, dryGain);
+    wetDryLeft.gain(1, wetGain);
+    wetDryRight.gain(0, dryGain);
+    wetDryRight.gain(1, wetGain);
+}
+
 // Connect input (passthrough) to mixers
 AudioConnection patchInL(audioInput, 0, mixerLeft, 0);  // left input → mixer L ch0
 AudioConnection patchInR(audioInput, 1, mixerRight, 0); // right input → mixer R ch0
@@ -36,9 +61,28 @@ AudioConnection patchSynth2R(myEffect2, 0, mixerRight, 2); // synth 3rd → mixe
 AudioConnection patchSynth3L(myEffect3, 0, mixerLeft, 3);  // synth 5th → mixer L ch3
 AudioConnection patchSynth3R(myEffect3, 0, mixerRight, 3); // synth 5th → mixer R ch3
 
-// Connect mixers to output
-AudioConnection patchOutL(mixerLeft, 0, audioOutput, 0);  // mixer L → left output
-AudioConnection patchOutR(mixerRight, 0, audioOutput, 1); // mixer R → right output
+// Mix synth voices separately so reverb processes ONLY synths
+AudioConnection patchSynthOnly1L(myEffect, 0, synthOnlyLeft, 0);
+AudioConnection patchSynthOnly2L(myEffect2, 0, synthOnlyLeft, 1);
+AudioConnection patchSynthOnly3L(myEffect3, 0, synthOnlyLeft, 2);
+
+AudioConnection patchSynthOnly1R(myEffect, 0, synthOnlyRight, 0);
+AudioConnection patchSynthOnly2R(myEffect2, 0, synthOnlyRight, 1);
+AudioConnection patchSynthOnly3R(myEffect3, 0, synthOnlyRight, 2);
+
+// Route synth-only mixers -> reverb (stereo)
+AudioConnection patchReverbInL(synthOnlyLeft, 0, reverb, 0);
+AudioConnection patchReverbInR(synthOnlyRight, 0, reverb, 1);
+
+// Combine dry (original mixer with input passthrough) and wet (reverb)
+AudioConnection patchDryL(mixerLeft, 0, wetDryLeft, 0);
+AudioConnection patchWetL(reverb, 0, wetDryLeft, 1);
+
+AudioConnection patchDryR(mixerRight, 0, wetDryRight, 0);
+AudioConnection patchWetR(reverb, 1, wetDryRight, 1);
+
+AudioConnection patchOutL(wetDryLeft, 0, audioOutput, 0);
+AudioConnection patchOutR(wetDryRight, 0, audioOutput, 1);
 
 // keep track of last detected tonic frequency
 float lastDetectedFrequency = 0.0f;
@@ -302,7 +346,7 @@ void setup()
     Serial.println("Waveforms initialized (3 voices for chord)");
 
     // Initialize pitch detector
-    noteDetect.begin(0.15); // threshold 0.15 (0.0 = very sensitive, 1.0 = very picky)
+    noteDetect.begin(0.10); // threshold 0.15 (0.0 = very sensitive, 1.0 = very picky)
     Serial.println("Pitch detector initialized");
 
     // Configure mixers: boost input passthrough, lower synth to prevent clipping
@@ -323,6 +367,21 @@ void setup()
     Serial.print(inputGain);
     Serial.print(", synth gain ");
     Serial.println(synthGain);
+
+    // Initialize reverb wet/dry balance (hardcoded to 30% wet)
+    setReverbWet(reverbWet);
+    // Optional reverb character settings
+    reverb.roomsize(0.6f);
+    reverb.damping(0.5f);
+
+    // Configure synth-only mixers so reverb receives synth voices at unity
+    synthOnlyLeft.gain(0, 1.0f);
+    synthOnlyLeft.gain(1, 1.0f);
+    synthOnlyLeft.gain(2, 1.0f);
+
+    synthOnlyRight.gain(0, 1.0f);
+    synthOnlyRight.gain(1, 1.0f);
+    synthOnlyRight.gain(2, 1.0f);
 
     Serial.println("Playing startup beep 100ms @ 0.7");
     myEffect.frequency(1000);
@@ -448,39 +507,74 @@ void loop()
         }
     }
 
-    // Read pitch detection
+    // Read pitch detection with median filtering
     float frequency = 0.0;
     float probability = 0.0;
     const char *noteName = "---";
     static float sampledFrequency = 0.0f; // frequency sampled while FS1 held
+    static float freqBuf[3] = {0, 0, 0}; // median filter buffer
+    static int freqBufIdx = 0;
 
     if (noteDetect.available())
     {
         frequency = noteDetect.read();
         probability = noteDetect.probability();
 
-        // Only sample input note when FS1 is held
-        if (fs1 && probability > 0.85 && frequency > 50.0 && frequency < 2000.0)
-        {
-            // normalize to a consistent octave range (220-880 Hz) to avoid octave jumps
-            float normalizedFreq = frequency;
-            while (normalizedFreq < 220.0)
-                normalizedFreq *= 2.0;
-            while (normalizedFreq > 880.0)
-                normalizedFreq /= 2.0;
-            sampledFrequency = normalizedFreq;
-            lastDetectedFrequency = normalizedFreq;
+        // Add raw frequency to median filter buffer
+        freqBuf[freqBufIdx] = frequency;
+        freqBufIdx = (freqBufIdx + 1) % 5;
 
-            // Update chord in real-time while sampling
-            updateChordTonic(normalizedFreq, currentKey, currentModeIsMajor);
+        // Copy and sort for median calculation
+        float sorted[5];
+        memcpy(sorted, freqBuf, sizeof(sorted));
+        for (int i = 0; i < 5; i++)
+            for (int j = i + 1; j < 5; j++)
+                if (sorted[j] < sorted[i])
+                {
+                    float temp = sorted[i];
+                    sorted[i] = sorted[j];
+                    sorted[j] = temp;
+                }
+
+        float medianFreq = sorted[2]; // middle value after sorting
+
+        // Use probability as a smoothing weight (rather than gating on a threshold).
+        // Normalize the new median into the same octave range as `sampledFrequency`
+        if (medianFreq > 50.0 && medianFreq < 2000.0)
+        {
+            float newNorm = medianFreq;
+            if (newNorm < 200.0f) newNorm = newNorm * 2.0f;
+            else if (newNorm > 950.0f) newNorm = newNorm / 2.0f;
+            if (sampledFrequency <= 0.0f)
+            {
+                // First valid sample: initialize without smoothing
+                sampledFrequency = newNorm;
+            }
+            else
+            {
+                // Smooth using probability as weight: higher probability -> more trust in new value
+                float smoothed = probability * newNorm + (1.0f - probability) * sampledFrequency;
+                sampledFrequency = smoothed;
+            }
+
+            // Update last detected frequency for external use
+            lastDetectedFrequency = sampledFrequency;
+
+            // Update chord in real-time while sampling (only when FS1 is held)
+            if (fs1)
+            {
+                updateChordTonic(sampledFrequency, currentKey, currentModeIsMajor);
+            }
         }
 
         // Simple note name lookup (A4 = 440 Hz)
-        if (probability > 0.9) // only show if confident
+        // Use the smoothed `sampledFrequency` (which already uses `probability` as a weight)
+        if (sampledFrequency > 0.0f)
         {
             // Calculate note from frequency: n = 12 * log2(f/440) + 69 (MIDI note number)
-            float n = 12.0 * log2f(frequency / 440.0) + 69.0;
+            float n = 12.0 * log2f(sampledFrequency / 440.0) + 69.0;
             int noteNum = (int)(n + 0.5) % 12;
+            if (noteNum < 0) noteNum += 12;
             const char *noteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
             noteName = noteNames[noteNum];
         }
@@ -564,5 +658,5 @@ void loop()
     prevFs1 = fs1;
     prevFs2 = fs2;
 
-    delay(50);
+    delay(25);
 }
