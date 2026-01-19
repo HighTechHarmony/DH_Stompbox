@@ -13,6 +13,10 @@ AudioSynthWaveform myEffect2Org2;
 AudioSynthWaveform myEffect2Org3;
 AudioSynthWaveform myEffect3Org2;
 AudioSynthWaveform myEffect3Org3;
+// Additional oscillators for Rhodes and Strings (2 per voice)
+AudioSynthWaveform myEffectRhodes2;
+AudioSynthWaveform myEffect2Rhodes2;
+AudioSynthWaveform myEffect3Rhodes2;
 AudioInputI2S audioInput;   // Audio shield input
 AudioOutputI2S audioOutput; // Audio shield output
 AudioMixer4 mixerLeft;      // Mix input + synth for left channel
@@ -90,6 +94,19 @@ AudioConnection patchSynthOnly2Org2R(myEffect2Org2, 0, synthOnlyRight, 1);
 AudioConnection patchSynthOnly2Org3R(myEffect2Org3, 0, synthOnlyRight, 1);
 AudioConnection patchSynthOnly3Org2R(myEffect3Org2, 0, synthOnlyRight, 2);
 AudioConnection patchSynthOnly3Org3R(myEffect3Org3, 0, synthOnlyRight, 2);
+// Rhodes and Strings connections (share same mixer channels as primary oscillators)
+AudioConnection patchRhodes2L(myEffectRhodes2, 0, mixerLeft, 1);
+AudioConnection patchRhodes2R(myEffectRhodes2, 0, mixerRight, 1);
+AudioConnection patch2Rhodes2L(myEffect2Rhodes2, 0, mixerLeft, 2);
+AudioConnection patch2Rhodes2R(myEffect2Rhodes2, 0, mixerRight, 2);
+AudioConnection patch3Rhodes2L(myEffect3Rhodes2, 0, mixerLeft, 3);
+AudioConnection patch3Rhodes2R(myEffect3Rhodes2, 0, mixerRight, 3);
+AudioConnection patchSynthOnlyRhodes2L(myEffectRhodes2, 0, synthOnlyLeft, 0);
+AudioConnection patchSynthOnly2Rhodes2L(myEffect2Rhodes2, 0, synthOnlyLeft, 1);
+AudioConnection patchSynthOnly3Rhodes2L(myEffect3Rhodes2, 0, synthOnlyLeft, 2);
+AudioConnection patchSynthOnlyRhodes2R(myEffectRhodes2, 0, synthOnlyRight, 0);
+AudioConnection patchSynthOnly2Rhodes2R(myEffect2Rhodes2, 0, synthOnlyRight, 1);
+AudioConnection patchSynthOnly3Rhodes2R(myEffect3Rhodes2, 0, synthOnlyRight, 2);
 AudioConnection patchReverbInL(synthOnlyLeft, 0, reverb, 0);
 AudioConnection patchReverbInR(synthOnlyRight, 0, reverb, 1);
 AudioConnection patchDryL(mixerLeft, 0, wetDryLeft, 0);
@@ -165,12 +182,20 @@ void stopAllOscillators()
     myEffect2Org3.amplitude(0);
     myEffect3Org2.amplitude(0);
     myEffect3Org3.amplitude(0);
+    myEffectRhodes2.amplitude(0);
+    myEffect2Rhodes2.amplitude(0);
+    myEffect3Rhodes2.amplitude(0);
 }
 
 void initSineSound(float tonic, float third, float fifth, float octaveMul, float perVoice)
 {
     // Original sine wave sound - single oscillator per voice
     stopAllOscillators();
+
+    // Set waveform type to sine
+    myEffect.begin(WAVEFORM_SINE);
+    myEffect2.begin(WAVEFORM_SINE);
+    myEffect3.begin(WAVEFORM_SINE);
 
     myEffect.frequency(tonic * octaveMul);
     myEffect2.frequency(tonic * third * octaveMul);
@@ -185,6 +210,17 @@ void initOrganSound(float tonic, float third, float fifth, float octaveMul, floa
 {
     // Organ sound - 3 slightly detuned oscillators per voice
     stopAllOscillators();
+
+    // Set all oscillators to sine waveform
+    myEffect.begin(WAVEFORM_SINE);
+    myEffect2.begin(WAVEFORM_SINE);
+    myEffect3.begin(WAVEFORM_SINE);
+    myEffectOrg2.begin(WAVEFORM_SINE);
+    myEffectOrg3.begin(WAVEFORM_SINE);
+    myEffect2Org2.begin(WAVEFORM_SINE);
+    myEffect2Org3.begin(WAVEFORM_SINE);
+    myEffect3Org2.begin(WAVEFORM_SINE);
+    myEffect3Org3.begin(WAVEFORM_SINE);
 
     float detune1 = 1.002f;            // +3.5 cents
     float detune2 = 0.998f;            // -3.5 cents
@@ -210,9 +246,79 @@ void initOrganSound(float tonic, float third, float fifth, float octaveMul, floa
     myEffect3.frequency(tonic * fifth * octaveMul);
     myEffect3.amplitude(ampPerOsc);
     myEffect3Org2.frequency(tonic * fifth * octaveMul * detune1);
+    // Set all oscillators to sine waveform
+    myEffect.begin(WAVEFORM_SINE);
+    myEffect2.begin(WAVEFORM_SINE);
+    myEffect3.begin(WAVEFORM_SINE);
+    myEffectRhodes2.begin(WAVEFORM_SINE);
+    myEffect2Rhodes2.begin(WAVEFORM_SINE);
+    myEffect3Rhodes2.begin(WAVEFORM_SINE);
+
     myEffect3Org2.amplitude(ampPerOsc);
     myEffect3Org3.frequency(tonic * fifth * octaveMul * detune2);
     myEffect3Org3.amplitude(ampPerOsc);
+}
+
+void initRhodesSound(float tonic, float third, float fifth, float octaveMul, float perVoice)
+{
+    // Rhodes sound - 2 oscillators per voice with bell-like character
+    // Primary sine + slightly detuned companion with lower amplitude
+    stopAllOscillators();
+
+    float detune = 1.0015f;                // +2.6 cents - subtle bell-like chorus
+    float mainAmp = perVoice * 0.65f;      // 65% primary
+    float companionAmp = perVoice * 0.35f; // 35% companion
+
+    // Root voice (2 oscillators)
+    myEffect.frequency(tonic * octaveMul);
+    myEffect.amplitude(mainAmp);
+    myEffectRhodes2.frequency(tonic * octaveMul * detune);
+    myEffectRhodes2.amplitude(companionAmp);
+
+    // Third voice (2 oscillators)
+    myEffect2.frequency(tonic * third * octaveMul);
+    myEffect2.amplitude(mainAmp);
+    myEffect2Rhodes2.frequency(tonic * third * octaveMul * detune);
+    myEffect2Rhodes2.amplitude(companionAmp);
+
+    // Fifth voice (2 oscillators)
+    myEffect3.frequency(tonic * fifth * octaveMul);
+    myEffect3.amplitude(mainAmp);
+    myEffect3Rhodes2.frequency(tonic * fifth * octaveMul * detune);
+    myEffect3Rhodes2.amplitude(companionAmp);
+}
+
+void initStringsSound(float tonic, float third, float fifth, float octaveMul, float perVoice)
+{
+    // Strings sound - 2 sawtooth oscillators per voice for rich ensemble
+    stopAllOscillators();
+
+    float detune = 1.004f;             // +6.9 cents - wider detune for ensemble
+    float ampPerOsc = perVoice / 2.0f; // equal amplitude for both oscillators
+
+    // Root voice (2 sawtooth oscillators)
+    myEffect.begin(WAVEFORM_SAWTOOTH);
+    myEffect.frequency(tonic * octaveMul);
+    myEffect.amplitude(ampPerOsc);
+    myEffectRhodes2.begin(WAVEFORM_SAWTOOTH);
+    myEffectRhodes2.frequency(tonic * octaveMul * detune);
+    myEffectRhodes2.amplitude(ampPerOsc);
+
+    // Third voice (2 sawtooth oscillators)
+    myEffect2.begin(WAVEFORM_SAWTOOTH);
+    myEffect2.frequency(tonic * third * octaveMul);
+    myEffect2.amplitude(ampPerOsc);
+    myEffect2Rhodes2.begin(WAVEFORM_SAWTOOTH);
+    myEffect2Rhodes2.frequency(tonic * third * octaveMul * detune);
+    myEffect2Rhodes2.amplitude(ampPerOsc);
+
+    // Fifth voice (2 sawtooth oscillators)
+    myEffect3.begin(WAVEFORM_SAWTOOTH);
+    myEffect3.frequency(tonic * fifth * octaveMul);
+    myEffect3.amplitude(ampPerOsc);
+    myEffect3Rhodes2.begin(WAVEFORM_SAWTOOTH);
+    myEffect3Rhodes2.frequency(tonic * fifth * octaveMul * detune);
+    myEffect3Rhodes2.amplitude(ampPerOsc);
 }
 
 void startChord(float potNorm, float tonicFreq, int keyNote, bool isMajor)
@@ -242,6 +348,14 @@ void startChord(float potNorm, float tonicFreq, int keyNote, bool isMajor)
     if (currentSynthSound == 1) // Organ
     {
         initOrganSound(tonic, third, fifth, octaveMul, perVoice);
+    }
+    else if (currentSynthSound == 2) // Rhodes
+    {
+        initRhodesSound(tonic, third, fifth, octaveMul, perVoice);
+    }
+    else if (currentSynthSound == 3) // Strings
+    {
+        initStringsSound(tonic, third, fifth, octaveMul, perVoice);
     }
     else // Sine (default)
     {
@@ -289,6 +403,32 @@ void updateChordTonic(float tonicFreq, int keyNote, bool isMajor)
         myEffect3.frequency(tonicFreq * fifth * octaveMul);
         myEffect3Org2.frequency(tonicFreq * fifth * octaveMul * detune1);
         myEffect3Org3.frequency(tonicFreq * fifth * octaveMul * detune2);
+    }
+    else if (currentSynthSound == 2) // Rhodes
+    {
+        float detune = 1.0015f;
+
+        myEffect.frequency(tonicFreq * octaveMul);
+        myEffectRhodes2.frequency(tonicFreq * octaveMul * detune);
+
+        myEffect2.frequency(tonicFreq * third * octaveMul);
+        myEffect2Rhodes2.frequency(tonicFreq * third * octaveMul * detune);
+
+        myEffect3.frequency(tonicFreq * fifth * octaveMul);
+        myEffect3Rhodes2.frequency(tonicFreq * fifth * octaveMul * detune);
+    }
+    else if (currentSynthSound == 3) // Strings
+    {
+        float detune = 1.004f;
+
+        myEffect.frequency(tonicFreq * octaveMul);
+        myEffectRhodes2.frequency(tonicFreq * octaveMul * detune);
+
+        myEffect2.frequency(tonicFreq * third * octaveMul);
+        myEffect2Rhodes2.frequency(tonicFreq * third * octaveMul * detune);
+
+        myEffect3.frequency(tonicFreq * fifth * octaveMul);
+        myEffect3Rhodes2.frequency(tonicFreq * fifth * octaveMul * detune);
     }
     else // Sine
     {
@@ -350,6 +490,27 @@ void updateChordVolume(float potNorm)
                 myEffect3Org2.amplitude(ampPerOsc);
                 myEffect3Org3.amplitude(ampPerOsc);
             }
+            else if (currentSynthSound == 2) // Rhodes
+            {
+                float mainAmp = potNorm / 3.0f * 0.65f;
+                float companionAmp = potNorm / 3.0f * 0.35f;
+                myEffect.amplitude(mainAmp);
+                myEffectRhodes2.amplitude(companionAmp);
+                myEffect2.amplitude(mainAmp);
+                myEffect2Rhodes2.amplitude(companionAmp);
+                myEffect3.amplitude(mainAmp);
+                myEffect3Rhodes2.amplitude(companionAmp);
+            }
+            else if (currentSynthSound == 3) // Strings
+            {
+                float ampPerOsc = potNorm / 6.0f; // 6 total oscillators
+                myEffect.amplitude(ampPerOsc);
+                myEffectRhodes2.amplitude(ampPerOsc);
+                myEffect2.amplitude(ampPerOsc);
+                myEffect2Rhodes2.amplitude(ampPerOsc);
+                myEffect3.amplitude(ampPerOsc);
+                myEffect3Rhodes2.amplitude(ampPerOsc);
+            }
             else // Sine
             {
                 float perVoice = potNorm / 3.0f;
@@ -398,6 +559,28 @@ void updateChordFade()
                 myEffect3.amplitude(ampPerOsc);
                 myEffect3Org2.amplitude(ampPerOsc);
                 myEffect3Org3.amplitude(ampPerOsc);
+            }
+            else if (currentSynthSound == 2) // Rhodes
+            {
+                float perVoice = curAmp / 3.0f;
+                float mainAmp = perVoice * 0.65f;
+                float companionAmp = perVoice * 0.35f;
+                myEffect.amplitude(mainAmp);
+                myEffectRhodes2.amplitude(companionAmp);
+                myEffect2.amplitude(mainAmp);
+                myEffect2Rhodes2.amplitude(companionAmp);
+                myEffect3.amplitude(mainAmp);
+                myEffect3Rhodes2.amplitude(companionAmp);
+            }
+            else if (currentSynthSound == 3) // Strings
+            {
+                float ampPerOsc = curAmp / 6.0f; // 6 total oscillators
+                myEffect.amplitude(ampPerOsc);
+                myEffectRhodes2.amplitude(ampPerOsc);
+                myEffect2.amplitude(ampPerOsc);
+                myEffect2Rhodes2.amplitude(ampPerOsc);
+                myEffect3.amplitude(ampPerOsc);
+                myEffect3Rhodes2.amplitude(ampPerOsc);
             }
             else // Sine
             {
@@ -475,7 +658,20 @@ void setupAudio()
     myEffect3Org3.frequency(1000);
     myEffect3Org3.amplitude(0);
 
-    Serial.println("Waveforms initialized (9 oscillators: 3 for sine, 9 for organ)");
+    // Initialize Rhodes and Strings oscillators
+    myEffectRhodes2.begin(WAVEFORM_SINE);
+    myEffectRhodes2.frequency(1000);
+    myEffectRhodes2.amplitude(0);
+
+    myEffect2Rhodes2.begin(WAVEFORM_SINE);
+    myEffect2Rhodes2.frequency(1000);
+    myEffect2Rhodes2.amplitude(0);
+
+    myEffect3Rhodes2.begin(WAVEFORM_SINE);
+    myEffect3Rhodes2.frequency(1000);
+    myEffect3Rhodes2.amplitude(0);
+
+    Serial.println("Waveforms initialized (12 oscillators total for all synth sounds)");
 
 // Configure mixers
 #define BOOST_INPUT_GAIN false

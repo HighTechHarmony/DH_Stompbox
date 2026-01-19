@@ -46,8 +46,8 @@ const int MUTING_MENU_COUNT = 2;
 int menuMutingIndex = 0; // 0=Disabled, 1=Enabled
 
 // Synth sound options
-const char *synthSndMenuNames[] = {"Sine", "Organ"};
-const int SYNTHSND_MENU_COUNT = 2;
+const char *synthSndMenuNames[] = {"Sine", "Organ", "Rhodes", "Strings"};
+const int SYNTHSND_MENU_COUNT = 4;
 
 void handleMenuEncoder(int delta)
 {

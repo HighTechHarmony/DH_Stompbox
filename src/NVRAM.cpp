@@ -62,12 +62,13 @@ void loadNVRAM()
         currentMutingEnabled = (mu == 1);
         Serial.print(" muting=");
         Serial.println(currentMutingEnabled ? "Enabled" : "Disabled");
-        // load synth sound (0 = Sine, 1 = Organ, etc.)
+        // load synth sound (0 = Sine, 1 = Organ, 2 = Rhodes, 3 = Strings)
         uint8_t ss = EEPROM.read(NVRAM_SYNTHSND_ADDR);
-        if (ss <= 1) // validate range
+        if (ss <= 3) // validate range
             currentSynthSound = ss;
         Serial.print(" synthSound=");
-        Serial.println(currentSynthSound == 0 ? "Sine" : "Organ");
+        const char *soundNames[] = {"Sine", "Organ", "Rhodes", "Strings"};
+        Serial.println(soundNames[currentSynthSound]);
     }
     else
     {
