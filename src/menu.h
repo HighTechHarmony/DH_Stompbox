@@ -9,7 +9,8 @@ enum MenuLevel
     MENU_TOP,
     MENU_KEY_SELECT,
     MENU_MODE_SELECT,
-    MENU_OCTAVE_SELECT
+    MENU_OCTAVE_SELECT,
+    MENU_BASSGUIT_SELECT
 };
 
 extern MenuLevel currentMenuLevel;
@@ -17,12 +18,14 @@ extern int menuTopIndex;
 extern int menuKeyIndex;
 extern int menuModeIndex;
 extern int menuOctaveIndex;
+extern int menuBassGuitIndex;
 
 // Viewport tracking for scrolling submenus
 extern int keyViewportStart;
 extern int modeViewportStart;
 extern int octaveViewportStart;
 extern int topViewportStart;
+extern int bassGuitViewportStart;
 
 // Menu display names
 extern const char *menuTopItems[];
@@ -32,6 +35,8 @@ extern const int KEY_MENU_COUNT;
 extern const int keyMenuToChromatic[];
 extern const char *modeMenuNames[];
 extern const int MODE_MENU_COUNT;
+extern const char *bassGuitMenuNames[];
+extern const int BASSGUIT_MENU_COUNT;
 extern const int octaveOptions[];
 extern const char *octaveMenuNames[];
 extern const int OCTAVE_MENU_COUNT;

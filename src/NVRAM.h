@@ -9,10 +9,13 @@
 #define NVRAM_KEY_ADDR 1
 #define NVRAM_MODE_ADDR 2
 #define NVRAM_OCTAVE_ADDR 3
+// Address for Bass/Guitar mode (0=Guitar, 1=Bass)
+#define NVRAM_BASSGUIT_ADDR 4
 
 extern int currentKey;
 extern bool currentModeIsMajor;
 extern int currentOctaveShift;
+extern bool currentInstrumentIsBass;
 
 void saveNVRAM();
 void loadNVRAM();

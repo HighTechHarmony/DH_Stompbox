@@ -1,4 +1,5 @@
 #include "pitch.h"
+#include "NVRAM.h"
 
 // Pitch detection object
 AudioAnalyzeNoteFrequency noteDetect;
@@ -13,31 +14,54 @@ static int freqBufIdx = 0;
 
 void setupPitchDetection()
 {
-    // Initialize pitch detector
-    noteDetect.begin(0.10); // threshold typical 0.15 (0.0 = very sensitive, 1.0 = very picky)
-    Serial.println("Pitch detector initialized");
+    // Initialize pitch detector with threshold
+    // threshold: 0.0 = very sensitive, 1.0 = very picky (0.10 is good for general use)
+    noteDetect.begin(0.10);
+    Serial.println("Pitch detector initialized with threshold 0.10");
 }
 
 void updatePitchDetection(float &frequency, float &probability, const char *&noteName)
 {
+    static unsigned long lastDebugMs = 0;
+    static int availableCount = 0;
+    static int notAvailableCount = 0;
+
     frequency = 0.0;
     probability = 0.0;
     noteName = "---";
 
     if (noteDetect.available())
     {
+        availableCount++;
         frequency = noteDetect.read();
         probability = noteDetect.probability();
+
+        // Debug: log raw readings periodically
+        unsigned long now = millis();
+        if (now - lastDebugMs > 2000)
+        {
+            Serial.print("Pitch detect - available: ");
+            Serial.print(availableCount);
+            Serial.print(", not available: ");
+            Serial.print(notAvailableCount);
+            Serial.print(", last freq: ");
+            Serial.print(frequency);
+            Serial.print(" Hz, prob: ");
+            Serial.println(probability);
+            lastDebugMs = now;
+            availableCount = 0;
+            notAvailableCount = 0;
+        }
 
         // Add raw frequency to median filter buffer
         freqBuf[freqBufIdx] = frequency;
         freqBufIdx = (freqBufIdx + 1) % 3;
 
         // Copy and sort for median calculation
-        float sorted[5];
+        float sorted[3];
         memcpy(sorted, freqBuf, sizeof(sorted));
-        for (int i = 0; i < 5; i++)
-            for (int j = i + 1; j < 5; j++)
+        for (int i = 0; i < 3; i++)
+            for (int j = i + 1; j < 3; j++)
                 if (sorted[j] < sorted[i])
                 {
                     float temp = sorted[i];
@@ -45,7 +69,7 @@ void updatePitchDetection(float &frequency, float &probability, const char *&not
                     sorted[j] = temp;
                 }
 
-        float medianFreq = sorted[2]; // middle value after sorting
+        float medianFreq = sorted[1]; // middle value after sorting (index 1 of 3 elements)
 
         // Use probability as a smoothing weight (rather than gating on a threshold).
         // Normalize the new median into the same octave range as `sampledFrequency`
@@ -83,5 +107,9 @@ void updatePitchDetection(float &frequency, float &probability, const char *&not
             const char *noteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
             noteName = noteNames[noteNum];
         }
+    }
+    else
+    {
+        notAvailableCount++;
     }
 }

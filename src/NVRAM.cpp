@@ -2,15 +2,17 @@
 #include <EEPROM.h>
 
 // Define global variables declared as extern in NVRAM.h
-int currentKey = 0;             // 0=C, 1=C#, 2=D, etc. (chromatic scale)
-bool currentModeIsMajor = true; // true=major, false=minor
-int currentOctaveShift = 0;     // -1..2
+int currentKey = 0;                   // 0=C, 1=C#, 2=D, etc. (chromatic scale)
+bool currentModeIsMajor = true;       // true=major, false=minor
+int currentOctaveShift = 0;           // -1..2
+bool currentInstrumentIsBass = false; // false=Guitar (default), true=Bass
 
 void saveNVRAM()
 {
     EEPROM.write(NVRAM_SIGNATURE_ADDR, NVRAM_SIGNATURE);
     EEPROM.write(NVRAM_KEY_ADDR, (uint8_t)currentKey);
     EEPROM.write(NVRAM_MODE_ADDR, (uint8_t)(currentModeIsMajor ? 1 : 0));
+    EEPROM.write(NVRAM_BASSGUIT_ADDR, (uint8_t)(currentInstrumentIsBass ? 1 : 0));
     // store octave shifted by +2 to fit into unsigned byte (valid -1..2 -> 1..4)
     int8_t enc = currentOctaveShift + 2;
     if (enc < 0)
@@ -45,6 +47,11 @@ void loadNVRAM()
         }
         Serial.print(" octave=");
         Serial.println(currentOctaveShift);
+        // load instrument mode (0 = Guitar, 1 = Bass)
+        uint8_t ig = EEPROM.read(NVRAM_BASSGUIT_ADDR);
+        currentInstrumentIsBass = (ig == 1);
+        Serial.print(" instrument=");
+        Serial.println(currentInstrumentIsBass ? "Bass" : "Guitar");
     }
     else
     {
@@ -52,6 +59,7 @@ void loadNVRAM()
         Serial.println("NVRAM: empty, using default C Major");
         currentKey = 0; // C
         currentModeIsMajor = true;
+        currentInstrumentIsBass = false; // default to Guitar
         saveNVRAM();
     }
 }

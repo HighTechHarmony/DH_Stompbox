@@ -4,20 +4,22 @@
 
 // Menu state
 MenuLevel currentMenuLevel = MENU_TOP;
-int menuTopIndex = 0;    // 0=Key, 1=Mode
-int menuKeyIndex = 0;    // 0-11 for key selection
-int menuModeIndex = 0;   // 0=Major, 1=Minor
-int menuOctaveIndex = 1; // index into octave options (default 0)
+int menuTopIndex = 0;      // 0=Key, 1=Mode
+int menuKeyIndex = 0;      // 0-11 for key selection
+int menuModeIndex = 0;     // 0=Major, 1=Minor
+int menuOctaveIndex = 1;   // index into octave options (default 0)
+int menuBassGuitIndex = 0; // 0=Bass, 1=Guitar
 
 // Viewport tracking for scrolling submenus
 int keyViewportStart = 0;
 int modeViewportStart = 0;
 int octaveViewportStart = 0;
 int topViewportStart = 0;
+int bassGuitViewportStart = 0;
 
 // Menu display names
-const char *menuTopItems[] = {"Key", "Mode", "Octave"};
-const int MENU_TOP_COUNT = 3;
+const char *menuTopItems[] = {"MusicKey", "Maj/Min", "Octave", "Bass/Gtr"};
+const int MENU_TOP_COUNT = 4;
 
 const char *keyMenuNames[] = {"A", "Bb", "B", "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab"};
 const int KEY_MENU_COUNT = 12;
@@ -26,6 +28,9 @@ const int keyMenuToChromatic[] = {9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8}; // A, B
 
 const char *modeMenuNames[] = {"Major", "Minor"};
 const int MODE_MENU_COUNT = 2;
+
+const char *bassGuitMenuNames[] = {"Bass", "Guitar"};
+const int BASSGUIT_MENU_COUNT = 2;
 
 // Octave options
 const int octaveOptions[] = {-1, 0, 1, 2};
@@ -66,6 +71,14 @@ void handleMenuEncoder(int delta)
         if (menuOctaveIndex > OCTAVE_MENU_COUNT)
             menuOctaveIndex = OCTAVE_MENU_COUNT; // allow Parent
     }
+    else if (currentMenuLevel == MENU_BASSGUIT_SELECT)
+    {
+        menuBassGuitIndex += delta;
+        if (menuBassGuitIndex < 0)
+            menuBassGuitIndex = 0;
+        if (menuBassGuitIndex > BASSGUIT_MENU_COUNT)
+            menuBassGuitIndex = BASSGUIT_MENU_COUNT; // allow Parent
+    }
 }
 
 void handleMenuButton()
@@ -103,6 +116,12 @@ void handleMenuButton()
                     break;
                 }
             }
+        }
+        else if (menuTopIndex == 3) // Bass/Guit
+        {
+            currentMenuLevel = MENU_BASSGUIT_SELECT;
+            // Initialize to current instrument setting (0=Bass,1=Guitar)
+            menuBassGuitIndex = currentInstrumentIsBass ? 0 : 1;
         }
     }
     else if (currentMenuLevel == MENU_KEY_SELECT)
@@ -149,6 +168,21 @@ void handleMenuButton()
             {
                 updateChordTonic(currentChordTonic, currentKey, currentModeIsMajor);
             }
+            currentMenuLevel = MENU_TOP;
+        }
+    }
+    else if (currentMenuLevel == MENU_BASSGUIT_SELECT)
+    {
+        // If Parent selected, return to top. Otherwise apply instrument mode.
+        if (menuBassGuitIndex == BASSGUIT_MENU_COUNT)
+        {
+            currentMenuLevel = MENU_TOP;
+        }
+        else
+        {
+            // menuBassGuitIndex: 0=Bass,1=Guitar
+            currentInstrumentIsBass = (menuBassGuitIndex == 0);
+            saveNVRAM();
             currentMenuLevel = MENU_TOP;
         }
     }

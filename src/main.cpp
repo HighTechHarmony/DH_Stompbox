@@ -193,25 +193,25 @@ void loop()
     }
 
     // Serial output for debugging
-    Serial.print("AudioShield: ");
-    Serial.print(audioShieldEnabled ? "ENABLED " : "DISABLED ");
-    Serial.print("Enc:");
-    Serial.print(encoderPosition);
-    Serial.print(" Btn:");
-    Serial.print(encButton ? "PRESSED" : "released");
-    Serial.print(" FS1:");
-    Serial.print(fs1 ? "ON" : "off");
-    Serial.print(" FS2:");
-    Serial.print(fs2 ? "ON" : "off");
-    Serial.print(" Pot raw: ");
-    Serial.print(potRaw);
-    Serial.print(" Note: ");
-    Serial.print(noteName);
-    Serial.print(" (");
-    Serial.print(frequency, 1);
-    Serial.print(" Hz, prob: ");
-    Serial.print(probability, 2);
-    Serial.println(")");
+    // Serial.print("AudioShield: ");
+    // Serial.print(audioShieldEnabled ? "ENABLED " : "DISABLED ");
+    // Serial.print("Enc:");
+    // Serial.print(encoderPosition);
+    // Serial.print(" Btn:");
+    // Serial.print(encButton ? "PRESSED" : "released");
+    // Serial.print(" FS1:");
+    // Serial.print(fs1 ? "ON" : "off");
+    // Serial.print(" FS2:");
+    // Serial.print(fs2 ? "ON" : "off");
+    // Serial.print(" Pot raw: ");
+    // Serial.print(potRaw);
+    // Serial.print(" Note: ");
+    // Serial.print(noteName);
+    // Serial.print(" (");
+    // Serial.print(frequency, 1);
+    // Serial.print(" Hz, prob: ");
+    // Serial.print(probability, 2);
+    // Serial.println(")");
 
     // Render appropriate screen
     if (currentScreen == SCREEN_HOME)

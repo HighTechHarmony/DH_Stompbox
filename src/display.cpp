@@ -290,6 +290,55 @@ void renderMenuScreen()
                 display.println("^");
         }
     }
+    else if (currentMenuLevel == MENU_BASSGUIT_SELECT)
+    {
+        // Bass/Guitar selection submenu - show current menu name at top
+        display.setCursor(0, 0);
+        display.println(menuTopItems[3]);
+
+        int totalCount = BASSGUIT_MENU_COUNT + 1; // includes Parent
+        int visible = 3;
+
+        // Stable viewport scrolling
+        if (menuBassGuitIndex < bassGuitViewportStart)
+        {
+            bassGuitViewportStart = menuBassGuitIndex;
+        }
+        else if (menuBassGuitIndex >= bassGuitViewportStart + visible)
+        {
+            bassGuitViewportStart = menuBassGuitIndex - visible + 1;
+        }
+
+        if (bassGuitViewportStart < 0)
+            bassGuitViewportStart = 0;
+        if (bassGuitViewportStart > totalCount - visible)
+            bassGuitViewportStart = totalCount - visible;
+        if (bassGuitViewportStart < 0)
+            bassGuitViewportStart = 0;
+
+        for (int i = 0; i < visible; i++)
+        {
+            int idx = bassGuitViewportStart + i;
+            if (idx >= totalCount)
+                break;
+
+            int y = 18 + i * 18;
+            display.setCursor(0, y);
+            if (idx == menuBassGuitIndex)
+            {
+                display.print("> ");
+            }
+            else
+            {
+                display.print("  ");
+            }
+
+            if (idx < BASSGUIT_MENU_COUNT)
+                display.println(bassGuitMenuNames[idx]);
+            else
+                display.println("^");
+        }
+    }
 
     display.display();
 }
