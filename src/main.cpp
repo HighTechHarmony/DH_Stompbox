@@ -6,11 +6,12 @@
 #include <Adafruit_SSD1306.h>
 #include <core_pins.h>
 #include <EEPROM.h>
+#include "NVRAM.h"
 
 // ----------------------
 // Configuration
 // ----------------------
-#define BOOST_INPUT_GAIN false // set to false to use 0.5 gain (no boost)
+#define BOOST_INPUT_GAIN false                        // set to false to use 0.5 gain (no boost)
 #define SUPPRESS_CHORD_OUTPUT_DURING_TRANSITIONS true // when true, mute chord until FS1 forced window ends
 
 // Define audio objects
@@ -25,21 +26,23 @@ AudioAnalyzeNoteFrequency noteDetect; // Pitch detection
 AudioAnalyzePeak peak1;               // Input peak detection for test mode
 
 // Reverb + wet/dry mixers
-AudioEffectFreeverb reverb;       // stereo freeverb
-AudioMixer4 wetDryLeft;          // mix dry (mixerLeft) + wet (reverb L)
-AudioMixer4 wetDryRight;         // mix dry (mixerRight) + wet (reverb R)
+AudioEffectFreeverb reverb; // stereo freeverb
+AudioMixer4 wetDryLeft;     // mix dry (mixerLeft) + wet (reverb L)
+AudioMixer4 wetDryRight;    // mix dry (mixerRight) + wet (reverb R)
 
 // Synth-only mixers (so reverb is applied only to synth voices)
-AudioMixer4 synthOnlyLeft;       // mix synth voices for left reverb input
-AudioMixer4 synthOnlyRight;      // mix synth voices for right reverb input
+AudioMixer4 synthOnlyLeft;  // mix synth voices for left reverb input
+AudioMixer4 synthOnlyRight; // mix synth voices for right reverb input
 
 // Reverb wet control (0.0 = dry, 1.0 = fully wet)
 float reverbWet = 0.10f;
 
 void setReverbWet(float wet)
 {
-    if (wet < 0.0f) wet = 0.0f;
-    if (wet > 1.0f) wet = 1.0f;
+    if (wet < 0.0f)
+        wet = 0.0f;
+    if (wet > 1.0f)
+        wet = 1.0f;
     reverbWet = wet;
     float dryGain = 1.0f - reverbWet;
     float wetGain = reverbWet;
@@ -98,85 +101,44 @@ bool chordActive = false;
 bool chordSuppressed = true;      // when true, automatic restart is disabled (e.g., FS2 pressed)
 float currentChordTonic = 440.0f; // current tonic being played
 // Key and mode configuration
-int currentKey = 0;               // 0=C, 1=C#, 2=D, etc. (chromatic scale)
-bool currentModeIsMajor = true;   // true=major, false=minor
-int currentOctaveShift = 0;       // -1..2
+int currentKey = 0;             // 0=C, 1=C#, 2=D, etc. (chromatic scale)
+bool currentModeIsMajor = true; // true=major, false=minor
+int currentOctaveShift = 0;     // -1..2
 
-// NVRAM (EEPROM) layout
-#define NVRAM_SIGNATURE_ADDR 0
-#define NVRAM_SIGNATURE 0xA5
-#define NVRAM_KEY_ADDR 1
-#define NVRAM_MODE_ADDR 2
-#define NVRAM_OCTAVE_ADDR 3
-
-void saveNVRAM()
-{
-    EEPROM.write(NVRAM_SIGNATURE_ADDR, NVRAM_SIGNATURE);
-    EEPROM.write(NVRAM_KEY_ADDR, (uint8_t)currentKey);
-    EEPROM.write(NVRAM_MODE_ADDR, (uint8_t)(currentModeIsMajor ? 1 : 0));
-    // store octave shifted by +2 to fit into unsigned byte (valid -1..2 -> 1..4)
-    int8_t enc = currentOctaveShift + 2;
-    if (enc < 0) enc = 0;
-    if (enc > 255) enc = 255;
-    EEPROM.write(NVRAM_OCTAVE_ADDR, (uint8_t)enc);
-}
-
-void loadNVRAM()
-{
-    if (EEPROM.read(NVRAM_SIGNATURE_ADDR) == NVRAM_SIGNATURE)
-    {
-        uint8_t k = EEPROM.read(NVRAM_KEY_ADDR);
-        if (k < 12) currentKey = k;
-        uint8_t m = EEPROM.read(NVRAM_MODE_ADDR);
-        currentModeIsMajor = (m == 1);
-        Serial.print("NVRAM: loaded key=");
-        Serial.print(currentKey);
-        Serial.print(" mode=");
-        Serial.println(currentModeIsMajor ? "Major" : "Minor");
-        // load octave (stored as +2 offset)
-        uint8_t oe = EEPROM.read(NVRAM_OCTAVE_ADDR);
-        if (oe >= 1 && oe <= 5) // sanity check (1..5 corresponds to -1..3 but we expect 1..4)
-        {
-            int8_t decoded = (int8_t)oe - 2;
-            if (decoded >= -1 && decoded <= 2)
-            {
-                currentOctaveShift = decoded;
-            }
-        }
-        Serial.print(" octave=");
-        Serial.println(currentOctaveShift);
-    }
-    else
-    {
-        // Not initialized: use defaults and write them
-        Serial.println("NVRAM: empty, using default C Major");
-        currentKey = 0; // C
-        currentModeIsMajor = true;
-        saveNVRAM();
-    }
-}
+// NVRAM functions moved to src/NVRAM.cpp; header included above
 // fade state for graceful stop
 bool chordFading = false;
 unsigned long chordFadeStartMs = 0;
-unsigned long chordFadeDurationMs = 1500; //ramp down time (ms)
+unsigned long chordFadeDurationMs = 1500; // ramp down time (ms)
 float chordFadeStartAmp = 0.0f;
 
 unsigned long fs1ForcedUntilMs = 0;
-const unsigned long FS1_MIN_ACTIVATION_MS = 500;  // Window of time after FS1 press that tracking is on
+const unsigned long FS1_MIN_ACTIVATION_MS = 500; // Window of time after FS1 press that tracking is on
 
 // UI screen state
-enum ScreenMode { SCREEN_HOME, SCREEN_MENU, SCREEN_FADE };
+enum ScreenMode
+{
+    SCREEN_HOME,
+    SCREEN_MENU,
+    SCREEN_FADE
+};
 ScreenMode currentScreen = SCREEN_HOME;
 unsigned long lastEncoderActivityMs = 0;
-const unsigned long SCREEN_TIMEOUT_MS = 5000;  // 5 seconds
+const unsigned long SCREEN_TIMEOUT_MS = 5000; // 5 seconds
 
 // Menu state
-enum MenuLevel { MENU_TOP, MENU_KEY_SELECT, MENU_MODE_SELECT, MENU_OCTAVE_SELECT };
+enum MenuLevel
+{
+    MENU_TOP,
+    MENU_KEY_SELECT,
+    MENU_MODE_SELECT,
+    MENU_OCTAVE_SELECT
+};
 MenuLevel currentMenuLevel = MENU_TOP;
-int menuTopIndex = 0;        // 0=Key, 1=Mode
-int menuKeyIndex = 0;        // 0-11 for key selection
-int menuModeIndex = 0;       // 0=Major, 1=Minor
-int menuOctaveIndex = 1;     // index into octave options (default 0)
+int menuTopIndex = 0;    // 0=Key, 1=Mode
+int menuKeyIndex = 0;    // 0-11 for key selection
+int menuModeIndex = 0;   // 0=Major, 1=Minor
+int menuOctaveIndex = 1; // index into octave options (default 0)
 
 // Viewport tracking for scrolling submenus
 int keyViewportStart = 0;
@@ -185,20 +147,20 @@ int octaveViewportStart = 0;
 int topViewportStart = 0;
 
 // Menu display names
-const char* menuTopItems[] = {"Key", "Mode", "Octave"};
+const char *menuTopItems[] = {"Key", "Mode", "Octave"};
 const int MENU_TOP_COUNT = 3;
 
-const char* keyMenuNames[] = {"A", "Bb", "B", "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab"};
+const char *keyMenuNames[] = {"A", "Bb", "B", "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab"};
 const int KEY_MENU_COUNT = 12;
 // Map menu index to chromatic scale (C=0, C#=1, ... B=11)
 const int keyMenuToChromatic[] = {9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8}; // A, Bb, B, C, C#, D, D#, E, F, F#, G, G#
 
-const char* modeMenuNames[] = {"Major", "Minor"};
+const char *modeMenuNames[] = {"Major", "Minor"};
 const int MODE_MENU_COUNT = 2;
 
 // Octave options
 const int octaveOptions[] = {-1, 0, 1, 2};
-const char* octaveMenuNames[] = {"-1", "0", "1", "2"};
+const char *octaveMenuNames[] = {"-1", "0", "1", "2"};
 const int OCTAVE_MENU_COUNT = 4;
 
 // Pin Assignments
@@ -268,34 +230,43 @@ float getDiatonicThird(float noteFreq, int keyNote, bool isMajor)
     // Convert frequency to MIDI note number
     float midiNote = 12.0f * log2f(noteFreq / 440.0f) + 69.0f;
     int noteClass = ((int)round(midiNote)) % 12; // 0-11 chromatic position
-    
+
     // Calculate position in scale relative to key
     int relativePosition = (noteClass - keyNote + 12) % 12;
-    
+
     // Determine the third interval based on scale degree
     // Major scale intervals: W-W-H-W-W-W-H (steps from root: 0,2,4,5,7,9,11)
     // Natural minor scale intervals: W-H-W-W-H-W-W (steps from root: 0,2,3,5,7,8,10)
-    
+
     int thirdSemitones = 3; // default to minor third
-    
-    if (isMajor) {
+
+    if (isMajor)
+    {
         // Major scale: major thirds on scale degrees I, IV, V (positions 0, 5, 7)
-        if (relativePosition == 0 || relativePosition == 5 || relativePosition == 7) {
+        if (relativePosition == 0 || relativePosition == 5 || relativePosition == 7)
+        {
             thirdSemitones = 4; // major third
-        } else if (relativePosition == 2 || relativePosition == 4 || relativePosition == 9 || relativePosition == 11) {
+        }
+        else if (relativePosition == 2 || relativePosition == 4 || relativePosition == 9 || relativePosition == 11)
+        {
             thirdSemitones = 3; // minor third
         }
         // For diminished chord (degree VII, position 11), use minor third
-    } else {
+    }
+    else
+    {
         // Natural minor scale: major thirds on scale degrees III, VI, VII (positions 3, 8, 10)
-        if (relativePosition == 3 || relativePosition == 8 || relativePosition == 10) {
+        if (relativePosition == 3 || relativePosition == 8 || relativePosition == 10)
+        {
             thirdSemitones = 4; // major third
-        } else if (relativePosition == 0 || relativePosition == 2 || relativePosition == 5 || relativePosition == 7) {
+        }
+        else if (relativePosition == 0 || relativePosition == 2 || relativePosition == 5 || relativePosition == 7)
+        {
             thirdSemitones = 3; // minor third
         }
         // For diminished chord (degree II, position 2), use minor third
     }
-    
+
     return powf(2.0f, thirdSemitones / 12.0f);
 }
 
@@ -314,7 +285,7 @@ void startChord(float potNorm = 0.5f, float tonicFreq = 0.0f, int keyNote = 0, b
 
     // compute triad intervals (diatonic third, perfect fifth)
     const float third = getDiatonicThird(tonic, keyNote, isMajor);
-    const float fifth = powf(2.0f, 7.0f / 12.0f);      // +7 semitones
+    const float fifth = powf(2.0f, 7.0f / 12.0f); // +7 semitones
 
     // apply octave shift
     float octaveMul = powf(2.0f, (float)currentOctaveShift);
@@ -347,7 +318,7 @@ void updateChordTonic(float tonicFreq, int keyNote = 0, bool isMajor = true)
 
     // compute triad intervals (diatonic third, perfect fifth)
     const float third = getDiatonicThird(tonicFreq, keyNote, isMajor);
-    const float fifth = powf(2.0f, 7.0f / 12.0f);      // +7 semitones
+    const float fifth = powf(2.0f, 7.0f / 12.0f); // +7 semitones
 
     // apply octave shift
     float octaveMul = powf(2.0f, (float)currentOctaveShift);
@@ -357,7 +328,6 @@ void updateChordTonic(float tonicFreq, int keyNote = 0, bool isMajor = true)
 
     Serial.println(">>> CHORD UPDATE tonic " + String(tonicFreq) + "Hz");
 }
-
 
 void stopChord()
 {
@@ -425,7 +395,7 @@ void hardwareTestMode()
     display.display();
     delay(1000);
 
-    while (true)  // infinite loop - only exit is reset
+    while (true) // infinite loop - only exit is reset
     {
         // Read inputs
         bool encButton = !digitalRead(ENC_BTN);
@@ -437,16 +407,16 @@ void hardwareTestMode()
         float peakL = 0.0f;
         if (peak1.available())
         {
-            peakL = peak1.read();  // Returns 0.0-1.0 range
+            peakL = peak1.read(); // Returns 0.0-1.0 range
         }
 
         // Display diagnostics
         display.clearDisplay();
         display.setTextSize(1);
         display.setTextColor(SSD1306_WHITE);
-        
+
         int y = 0;
-        
+
         // Input level bargraph
         display.setCursor(0, y);
         display.print("Input:");
@@ -640,7 +610,7 @@ void setup()
     Serial.println("=== SETUP COMPLETE ===");
 
     // Check for hardware test mode (FS1 held at startup)
-    if (!digitalRead(FOOT1))  // FS1 is active low
+    if (!digitalRead(FOOT1)) // FS1 is active low
     {
         Serial.println("*** ENTERING HARDWARE TEST MODE ***");
         hardwareTestMode();
@@ -706,7 +676,8 @@ void loop()
     bool fs2 = !digitalRead(FOOT2);
 
     // On raw press-edge, ensure FS1 remains true for at least the minimum window
-    if (fs1_raw && !prevFs1) {
+    if (fs1_raw && !prevFs1)
+    {
         fs1ForcedUntilMs = now + FS1_MIN_ACTIVATION_MS;
     }
 
@@ -768,7 +739,7 @@ void loop()
     float probability = 0.0;
     const char *noteName = "---";
     static float sampledFrequency = 0.0f; // frequency sampled while FS1 held
-    static float freqBuf[3] = {0, 0, 0}; // median filter buffer
+    static float freqBuf[3] = {0, 0, 0};  // median filter buffer
     static int freqBufIdx = 0;
 
     if (noteDetect.available())
@@ -799,8 +770,10 @@ void loop()
         if (medianFreq > 50.0 && medianFreq < 2000.0)
         {
             float newNorm = medianFreq;
-            if (newNorm < 200.0f) newNorm = newNorm * 2.0f;
-            else if (newNorm > 950.0f) newNorm = newNorm / 2.0f;
+            if (newNorm < 200.0f)
+                newNorm = newNorm * 2.0f;
+            else if (newNorm > 950.0f)
+                newNorm = newNorm / 2.0f;
             if (sampledFrequency <= 0.0f)
             {
                 // First valid sample: initialize without smoothing
@@ -830,7 +803,8 @@ void loop()
             // Calculate note from frequency: n = 12 * log2(f/440) + 69 (MIDI note number)
             float n = 12.0 * log2f(sampledFrequency / 440.0) + 69.0;
             int noteNum = (int)(n + 0.5) % 12;
-            if (noteNum < 0) noteNum += 12;
+            if (noteNum < 0)
+                noteNum += 12;
             const char *noteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
             noteName = noteNames[noteNum];
         }
@@ -838,7 +812,7 @@ void loop()
 
     // Detect encoder activity for UI timeout and menu navigation
     static int lastEncoderPosition = 0;
-    
+
     if (encoderPosition != lastEncoderPosition)
     {
         lastEncoderActivityMs = now;
@@ -851,40 +825,48 @@ void loop()
         // Handle encoder changes based on current menu level
         if (currentScreen == SCREEN_MENU)
         {
-                                             // REVERSED direction: turning encoder one way now moves selection opposite
+            // REVERSED direction: turning encoder one way now moves selection opposite
             int delta = lastEncoderPosition - encoderPosition;
 
             if (currentMenuLevel == MENU_TOP)
             {
                 menuTopIndex += delta;
-                if (menuTopIndex < 0) menuTopIndex = 0;
-                if (menuTopIndex > MENU_TOP_COUNT) menuTopIndex = MENU_TOP_COUNT; // allow Parent as final entry
+                if (menuTopIndex < 0)
+                    menuTopIndex = 0;
+                if (menuTopIndex > MENU_TOP_COUNT)
+                    menuTopIndex = MENU_TOP_COUNT; // allow Parent as final entry
             }
             else if (currentMenuLevel == MENU_KEY_SELECT)
             {
                 menuKeyIndex += delta;
-                if (menuKeyIndex < 0) menuKeyIndex = 0;
-                if (menuKeyIndex > KEY_MENU_COUNT) menuKeyIndex = KEY_MENU_COUNT; // allow Parent
+                if (menuKeyIndex < 0)
+                    menuKeyIndex = 0;
+                if (menuKeyIndex > KEY_MENU_COUNT)
+                    menuKeyIndex = KEY_MENU_COUNT; // allow Parent
             }
             else if (currentMenuLevel == MENU_MODE_SELECT)
             {
                 menuModeIndex += delta;
-                if (menuModeIndex < 0) menuModeIndex = 0;
-                if (menuModeIndex > MODE_MENU_COUNT) menuModeIndex = MODE_MENU_COUNT; // allow Parent
+                if (menuModeIndex < 0)
+                    menuModeIndex = 0;
+                if (menuModeIndex > MODE_MENU_COUNT)
+                    menuModeIndex = MODE_MENU_COUNT; // allow Parent
             }
             else if (currentMenuLevel == MENU_OCTAVE_SELECT)
             {
                 menuOctaveIndex += delta;
-                if (menuOctaveIndex < 0) menuOctaveIndex = 0;
-                if (menuOctaveIndex > OCTAVE_MENU_COUNT) menuOctaveIndex = OCTAVE_MENU_COUNT; // allow Parent
+                if (menuOctaveIndex < 0)
+                    menuOctaveIndex = 0;
+                if (menuOctaveIndex > OCTAVE_MENU_COUNT)
+                    menuOctaveIndex = OCTAVE_MENU_COUNT; // allow Parent
             }
         }
 
         lastEncoderPosition = encoderPosition;
     }
-    
+
     // Handle encoder button press for menu selection
-    if (encButton && !prevEncButton)  // button press edge
+    if (encButton && !prevEncButton) // button press edge
     {
         // If at home, button now brings up the menu
         if (currentScreen == SCREEN_HOME)
@@ -895,12 +877,12 @@ void loop()
         }
         else if (currentScreen == SCREEN_MENU)
         {
-            lastEncoderActivityMs = now;  // keep menu active
+            lastEncoderActivityMs = now; // keep menu active
 
             if (currentMenuLevel == MENU_TOP)
             {
                 // Enter submenu based on selected top-level item or handle Parent
-                if (menuTopIndex == 0)  // Key
+                if (menuTopIndex == 0) // Key
                 {
                     currentMenuLevel = MENU_KEY_SELECT;
                     // Initialize to current key
@@ -913,7 +895,7 @@ void loop()
                         }
                     }
                 }
-                else if (menuTopIndex == 1)  // Mode
+                else if (menuTopIndex == 1) // Mode
                 {
                     currentMenuLevel = MENU_MODE_SELECT;
                     menuModeIndex = currentModeIsMajor ? 0 : 1;
@@ -987,12 +969,12 @@ void loop()
             }
         }
     }
-    
+
     // Timeout back to home screen after inactivity
     if (currentScreen == SCREEN_MENU && (now - lastEncoderActivityMs) > SCREEN_TIMEOUT_MS)
     {
         currentScreen = SCREEN_HOME;
-        currentMenuLevel = MENU_TOP;  // Reset to top level when timing out
+        currentMenuLevel = MENU_TOP; // Reset to top level when timing out
     }
 
     // Serial output
@@ -1035,9 +1017,9 @@ void loop()
     {
         // Home screen with larger font
         display.setTextSize(2);
-        
+
         int y = 0;
-        
+
         // Display key and mode
         display.setCursor(0, y);
         display.print("Key: ");
@@ -1048,7 +1030,7 @@ void loop()
             display.print("m");
         }
         y += 20;
-        
+
         // Display detected note and frequency
         display.setCursor(0, y);
         display.setTextSize(2);
@@ -1079,8 +1061,7 @@ void loop()
             display.setCursor(0, y);
             display.print(frequency, 1);
             display.print(" Hz");
-        }                
-        
+        }
     }
     else if (currentScreen == SCREEN_MENU)
     {
@@ -1095,22 +1076,29 @@ void loop()
 
             // Show top items with Parent at end using stable viewport scrolling
             int totalCount = MENU_TOP_COUNT + 1; // includes Parent
-            int visible = 3; // number of lines to show (fits size2)
+            int visible = 3;                     // number of lines to show (fits size2)
 
             // Stable viewport scrolling for top menu
-            if (menuTopIndex < topViewportStart) {
+            if (menuTopIndex < topViewportStart)
+            {
                 topViewportStart = menuTopIndex;
-            } else if (menuTopIndex >= topViewportStart + visible) {
+            }
+            else if (menuTopIndex >= topViewportStart + visible)
+            {
                 topViewportStart = menuTopIndex - visible + 1;
             }
-            if (topViewportStart < 0) topViewportStart = 0;
-            if (topViewportStart > totalCount - visible) topViewportStart = totalCount - visible;
-            if (topViewportStart < 0) topViewportStart = 0;
+            if (topViewportStart < 0)
+                topViewportStart = 0;
+            if (topViewportStart > totalCount - visible)
+                topViewportStart = totalCount - visible;
+            if (topViewportStart < 0)
+                topViewportStart = 0;
 
             for (int i = 0; i < visible; i++)
             {
                 int idx = topViewportStart + i;
-                if (idx >= totalCount) break;
+                if (idx >= totalCount)
+                    break;
                 int y = 18 + i * 18;
                 display.setCursor(0, y);
                 if (idx == menuTopIndex)
@@ -1136,28 +1124,35 @@ void loop()
 
             // Build a scrolling view over keys + Parent
             int totalCount = KEY_MENU_COUNT + 1; // includes Parent
-            int visible = 3; // number of lines to show (fits size2)
-            
+            int visible = 3;                     // number of lines to show (fits size2)
+
             // Stable viewport scrolling: only scroll when selection approaches edges
             // Keep selection within comfortable range (position 0-2 visible)
-            if (menuKeyIndex < keyViewportStart) {
+            if (menuKeyIndex < keyViewportStart)
+            {
                 // Scrolled up past top of viewport
                 keyViewportStart = menuKeyIndex;
-            } else if (menuKeyIndex >= keyViewportStart + visible) {
+            }
+            else if (menuKeyIndex >= keyViewportStart + visible)
+            {
                 // Scrolled down past bottom of viewport
                 keyViewportStart = menuKeyIndex - visible + 1;
             }
-            
+
             // Clamp viewport to valid range
-            if (keyViewportStart < 0) keyViewportStart = 0;
-            if (keyViewportStart > totalCount - visible) keyViewportStart = totalCount - visible;
-            if (keyViewportStart < 0) keyViewportStart = 0;
+            if (keyViewportStart < 0)
+                keyViewportStart = 0;
+            if (keyViewportStart > totalCount - visible)
+                keyViewportStart = totalCount - visible;
+            if (keyViewportStart < 0)
+                keyViewportStart = 0;
 
             for (int i = 0; i < visible; i++)
             {
                 int idx = keyViewportStart + i;
-                if (idx >= totalCount) break;
-                
+                if (idx >= totalCount)
+                    break;
+
                 int y = 18 + i * 18;
                 display.setCursor(0, y);
                 if (idx == menuKeyIndex)
@@ -1183,23 +1178,30 @@ void loop()
 
             int totalCount = MODE_MENU_COUNT + 1; // includes Parent
             int visible = 3;
-            
+
             // Stable viewport scrolling
-            if (menuModeIndex < modeViewportStart) {
+            if (menuModeIndex < modeViewportStart)
+            {
                 modeViewportStart = menuModeIndex;
-            } else if (menuModeIndex >= modeViewportStart + visible) {
+            }
+            else if (menuModeIndex >= modeViewportStart + visible)
+            {
                 modeViewportStart = menuModeIndex - visible + 1;
             }
-            
-            if (modeViewportStart < 0) modeViewportStart = 0;
-            if (modeViewportStart > totalCount - visible) modeViewportStart = totalCount - visible;
-            if (modeViewportStart < 0) modeViewportStart = 0;
+
+            if (modeViewportStart < 0)
+                modeViewportStart = 0;
+            if (modeViewportStart > totalCount - visible)
+                modeViewportStart = totalCount - visible;
+            if (modeViewportStart < 0)
+                modeViewportStart = 0;
 
             for (int i = 0; i < visible; i++)
             {
                 int idx = modeViewportStart + i;
-                if (idx >= totalCount) break;
-                
+                if (idx >= totalCount)
+                    break;
+
                 int y = 18 + i * 18;
                 display.setCursor(0, y);
                 if (idx == menuModeIndex)
@@ -1225,23 +1227,30 @@ void loop()
 
             int totalCount = OCTAVE_MENU_COUNT + 1; // includes Parent
             int visible = 3;
-            
+
             // Stable viewport scrolling
-            if (menuOctaveIndex < octaveViewportStart) {
+            if (menuOctaveIndex < octaveViewportStart)
+            {
                 octaveViewportStart = menuOctaveIndex;
-            } else if (menuOctaveIndex >= octaveViewportStart + visible) {
+            }
+            else if (menuOctaveIndex >= octaveViewportStart + visible)
+            {
                 octaveViewportStart = menuOctaveIndex - visible + 1;
             }
-            
-            if (octaveViewportStart < 0) octaveViewportStart = 0;
-            if (octaveViewportStart > totalCount - visible) octaveViewportStart = totalCount - visible;
-            if (octaveViewportStart < 0) octaveViewportStart = 0;
+
+            if (octaveViewportStart < 0)
+                octaveViewportStart = 0;
+            if (octaveViewportStart > totalCount - visible)
+                octaveViewportStart = totalCount - visible;
+            if (octaveViewportStart < 0)
+                octaveViewportStart = 0;
 
             for (int i = 0; i < visible; i++)
             {
                 int idx = octaveViewportStart + i;
-                if (idx >= totalCount) break;
-                
+                if (idx >= totalCount)
+                    break;
+
                 int y = 18 + i * 18;
                 display.setCursor(0, y);
                 if (idx == menuOctaveIndex)
@@ -1277,26 +1286,29 @@ void loop()
             {
                 unsigned long nowMs = millis();
                 long elapsed = (long)(nowMs - chordFadeStartMs);
-                if (elapsed < 0) elapsed = 0;
-                if (elapsed > (long)chordFadeDurationMs) elapsed = chordFadeDurationMs;
+                if (elapsed < 0)
+                    elapsed = 0;
+                if (elapsed > (long)chordFadeDurationMs)
+                    elapsed = chordFadeDurationMs;
                 progress = (float)elapsed / (float)chordFadeDurationMs;
             }
             int barW = SCREEN_WIDTH - (int)(progress * (float)SCREEN_WIDTH);
-        // draw filled bar (starts full and empties as progress increases)
-        display.fillRect(0, 0, barW, SCREEN_HEIGHT, SSD1306_WHITE);
-        // draw the word "FADEOUT" in inverse color centered
-        char buf[8];
-        // int pct = (int)(progress * 100.0f + 0.5f);
-        sprintf(buf, "%s", "FADEOUT");
-        display.setTextSize(2);
-        display.setTextColor(SSD1306_BLACK);
-        int tx = (SCREEN_WIDTH - (6 * strlen(buf))) / 2; // approx width per char
-        int ty = (SCREEN_HEIGHT / 2) - 8;
-        if (tx < 0) tx = 0;
-        display.setCursor(tx, ty);
-        display.println(buf);
-        display.setTextColor(SSD1306_WHITE);
-    }
+            // draw filled bar (starts full and empties as progress increases)
+            display.fillRect(0, 0, barW, SCREEN_HEIGHT, SSD1306_WHITE);
+            // draw the word "FADEOUT" in inverse color centered
+            char buf[8];
+            // int pct = (int)(progress * 100.0f + 0.5f);
+            sprintf(buf, "%s", "FADEOUT");
+            display.setTextSize(2);
+            display.setTextColor(SSD1306_BLACK);
+            int tx = (SCREEN_WIDTH - (6 * strlen(buf))) / 2; // approx width per char
+            int ty = (SCREEN_HEIGHT / 2) - 8;
+            if (tx < 0)
+                tx = 0;
+            display.setCursor(tx, ty);
+            display.println(buf);
+            display.setTextColor(SSD1306_WHITE);
+        }
     }
 
     display.display();
