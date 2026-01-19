@@ -50,6 +50,11 @@ extern float beepAmp;
 extern bool organVibratoEnabled;
 extern float organVibratoRate;  // Hz
 extern float organVibratoDepth; // fractional depth (e.g., 0.015 = ±1.5%)
+// Rhodes decay control
+extern bool rhodesDecaying;
+extern unsigned long rhodesDecayStartMs;
+extern unsigned long rhodesDecayDurationMs;
+extern float rhodesDecayStartAmp;
 
 // Audio functions
 void setupAudio();
@@ -66,5 +71,7 @@ void stopChord();
 void updateChordVolume(float potNorm);
 void updateChordFade();
 void updateVibrato();
+void startRhodesDecay();
+void updateRhodesDecay();
 
 #endif // AUDIO_H

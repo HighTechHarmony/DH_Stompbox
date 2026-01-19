@@ -70,6 +70,12 @@ float organBaseRootFreq = 440.0f;
 float organBaseThirdFreq = 440.0f;
 float organBaseFifthFreq = 440.0f;
 
+// Rhodes decay state (2 second decay after FS1 release)
+bool rhodesDecaying = false;
+unsigned long rhodesDecayStartMs = 0;
+unsigned long rhodesDecayDurationMs = 2000; // 2 seconds
+float rhodesDecayStartAmp = 0.0f;
+
 // Audio connections
 AudioConnection patchInL(audioInput, 0, mixerLeft, 0);  // left input → mixer L ch0
 AudioConnection patchInR(audioInput, 1, mixerRight, 0); // right input → mixer R ch0
@@ -484,6 +490,61 @@ void updateVibrato()
     myEffect3.frequency(organBaseFifthFreq * mult);
     myEffect3Org2.frequency(organBaseFifthFreq * mult * organDetune1);
     myEffect3Org3.frequency(organBaseFifthFreq * mult * organDetune2);
+}
+
+void startRhodesDecay()
+{
+    if (currentSynthSound != 2 || !chordActive)
+        return;
+
+    rhodesDecaying = true;
+    rhodesDecayStartMs = millis();
+    rhodesDecayStartAmp = beepAmp;
+    Serial.println(">>> RHODES DECAY START");
+}
+
+void updateRhodesDecay()
+{
+    if (!rhodesDecaying)
+        return;
+
+    unsigned long nowMs = millis();
+    unsigned long elapsed = nowMs - rhodesDecayStartMs;
+
+    if (elapsed >= rhodesDecayDurationMs)
+    { // Decay complete: silence Rhodes oscillators
+        myEffect.amplitude(0);
+        myEffectRhodes2.amplitude(0);
+        myEffect2.amplitude(0);
+        myEffect2Rhodes2.amplitude(0);
+        myEffect3.amplitude(0);
+        myEffect3Rhodes2.amplitude(0);
+        rhodesDecaying = false;
+        chordActive = false;
+        chordSuppressed = true;
+        beepAmp = 0.0f;
+        Serial.println(">>> RHODES DECAY COMPLETE");
+    }
+    else
+    {
+        // Apply exponential decay curve for natural piano-like envelope
+        float t = (float)elapsed / (float)rhodesDecayDurationMs; // 0..1
+        float curAmp = rhodesDecayStartAmp * (1.0f - t);
+
+        // Rhodes uses 2 oscillators per voice with 65/35 split
+        float perVoice = curAmp / 3.0f;
+        float mainAmp = perVoice * 0.65f;
+        float companionAmp = perVoice * 0.35f;
+
+        myEffect.amplitude(mainAmp);
+        myEffectRhodes2.amplitude(companionAmp);
+        myEffect2.amplitude(mainAmp);
+        myEffect2Rhodes2.amplitude(companionAmp);
+        myEffect3.amplitude(mainAmp);
+        myEffect3Rhodes2.amplitude(companionAmp);
+
+        beepAmp = curAmp;
+    }
 }
 
 void stopChord()

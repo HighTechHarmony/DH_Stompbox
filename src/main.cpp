@@ -55,6 +55,9 @@ void loop()
     // Apply any synth vibrato (e.g., organ) each loop
     updateVibrato();
 
+    // Apply Rhodes decay if active
+    updateRhodesDecay();
+
     // Return to home screen after fade completes
     if (!chordFading && currentScreen == SCREEN_FADE)
     {
@@ -142,6 +145,12 @@ void loop()
     if (fs1 && lastDetectedFrequency > 0.0f)
     {
         updateChordTonic(lastDetectedFrequency, currentKey, currentModeIsMajor);
+    }
+
+    // FS1 release edge: start Rhodes decay if Rhodes is active
+    if (!fs1_raw && prevFs1)
+    {
+        startRhodesDecay();
     }
 
     // Detect encoder activity for UI timeout and menu navigation
