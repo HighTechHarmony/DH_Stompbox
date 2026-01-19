@@ -1,0 +1,339 @@
+#include "display.h"
+#include "config.h"
+#include "menu.h"
+#include "audio.h"
+#include "NVRAM.h"
+#include <Wire.h>
+
+// OLED Setup
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
+
+ScreenMode currentScreen = SCREEN_HOME;
+unsigned long lastEncoderActivityMs = 0;
+
+void setupDisplay()
+{
+    bool oledAvailable = display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+    if (!oledAvailable)
+    {
+        Serial.println("OLED not found");
+        return;
+    }
+
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+    display.println("OLED OK");
+
+    // show audio shield init status underneath the OLED report
+    display.setCursor(0, 10); // next line (8px font + small gap)
+    display.print("AudioShield: ");
+    display.println(audioShieldEnabled ? "ENABLED" : "DISABLED");
+
+    display.display();
+}
+
+void renderHomeScreen(const char *noteName, float frequency)
+{
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(2);
+
+    int y = 0;
+
+    // Display key and mode
+    display.setCursor(0, y);
+    display.print("Key: ");
+    const char *keyNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    display.print(keyNames[currentKey]);
+    if (!currentModeIsMajor)
+    {
+        display.print("m");
+    }
+    y += 20;
+
+    // Display detected note and frequency
+    display.setCursor(0, y);
+    display.setTextSize(2);
+    display.print("Note: ");
+    display.print(noteName);
+    y += 20;
+
+    // Display a tuner bar graph that shows deviation from nearest semitone
+    if (frequency > 0.0f)
+    {
+        // Calculate deviation from nearest semitone in cents
+        float n = 12.0 * log2f(frequency / 440.0) + 69.0;
+        int nearestNote = (int)(n + 0.5);
+        float cents = (n - nearestNote) * 100.0f; // deviation in cents
+        // Draw bar graph
+        int barWidth = map(cents, -50, 50, -30, 30); // map -50 to +50 cents to -30 to +30 pixels
+        display.drawRect(0, y, 64, 10, SSD1306_WHITE);
+        if (barWidth < 0)
+        {
+            display.fillRect(32 + barWidth, y + 1, -barWidth, 8, SSD1306_WHITE);
+        }
+        else
+        {
+            display.fillRect(32, y + 1, barWidth, 8, SSD1306_WHITE);
+        }
+        y += 15;
+        display.setTextSize(1);
+        display.setCursor(0, y);
+        display.print(frequency, 1);
+        display.print(" Hz");
+    }
+
+    display.display();
+}
+
+void renderMenuScreen()
+{
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(2);
+
+    if (currentMenuLevel == MENU_TOP)
+    {
+        // Top-level menu
+        display.setCursor(0, 0);
+        display.println("Menu");
+
+        // Show top items with Parent at end using stable viewport scrolling
+        int totalCount = MENU_TOP_COUNT + 1; // includes Parent
+        int visible = 3;                     // number of lines to show (fits size2)
+
+        // Stable viewport scrolling for top menu
+        if (menuTopIndex < topViewportStart)
+        {
+            topViewportStart = menuTopIndex;
+        }
+        else if (menuTopIndex >= topViewportStart + visible)
+        {
+            topViewportStart = menuTopIndex - visible + 1;
+        }
+        if (topViewportStart < 0)
+            topViewportStart = 0;
+        if (topViewportStart > totalCount - visible)
+            topViewportStart = totalCount - visible;
+        if (topViewportStart < 0)
+            topViewportStart = 0;
+
+        for (int i = 0; i < visible; i++)
+        {
+            int idx = topViewportStart + i;
+            if (idx >= totalCount)
+                break;
+            int y = 18 + i * 18;
+            display.setCursor(0, y);
+            if (idx == menuTopIndex)
+            {
+                display.print("> ");
+            }
+            else
+            {
+                display.print("  ");
+            }
+
+            if (idx < MENU_TOP_COUNT)
+                display.println(menuTopItems[idx]);
+            else
+                display.println("^");
+        }
+    }
+    else if (currentMenuLevel == MENU_KEY_SELECT)
+    {
+        // Key selection submenu - show current menu name at top
+        display.setCursor(0, 0);
+        display.println(menuTopItems[0]);
+
+        // Build a scrolling view over keys + Parent
+        int totalCount = KEY_MENU_COUNT + 1; // includes Parent
+        int visible = 3;                     // number of lines to show (fits size2)
+
+        // Stable viewport scrolling
+        if (menuKeyIndex < keyViewportStart)
+        {
+            keyViewportStart = menuKeyIndex;
+        }
+        else if (menuKeyIndex >= keyViewportStart + visible)
+        {
+            keyViewportStart = menuKeyIndex - visible + 1;
+        }
+
+        if (keyViewportStart < 0)
+            keyViewportStart = 0;
+        if (keyViewportStart > totalCount - visible)
+            keyViewportStart = totalCount - visible;
+        if (keyViewportStart < 0)
+            keyViewportStart = 0;
+
+        for (int i = 0; i < visible; i++)
+        {
+            int idx = keyViewportStart + i;
+            if (idx >= totalCount)
+                break;
+
+            int y = 18 + i * 18;
+            display.setCursor(0, y);
+            if (idx == menuKeyIndex)
+            {
+                display.print("> ");
+            }
+            else
+            {
+                display.print("  ");
+            }
+
+            if (idx < KEY_MENU_COUNT)
+                display.println(keyMenuNames[idx]);
+            else
+                display.println("^");
+        }
+    }
+    else if (currentMenuLevel == MENU_MODE_SELECT)
+    {
+        // Mode selection submenu - show current menu name at top
+        display.setCursor(0, 0);
+        display.println(menuTopItems[1]);
+
+        int totalCount = MODE_MENU_COUNT + 1; // includes Parent
+        int visible = 3;
+
+        // Stable viewport scrolling
+        if (menuModeIndex < modeViewportStart)
+        {
+            modeViewportStart = menuModeIndex;
+        }
+        else if (menuModeIndex >= modeViewportStart + visible)
+        {
+            modeViewportStart = menuModeIndex - visible + 1;
+        }
+
+        if (modeViewportStart < 0)
+            modeViewportStart = 0;
+        if (modeViewportStart > totalCount - visible)
+            modeViewportStart = totalCount - visible;
+        if (modeViewportStart < 0)
+            modeViewportStart = 0;
+
+        for (int i = 0; i < visible; i++)
+        {
+            int idx = modeViewportStart + i;
+            if (idx >= totalCount)
+                break;
+
+            int y = 18 + i * 18;
+            display.setCursor(0, y);
+            if (idx == menuModeIndex)
+            {
+                display.print("> ");
+            }
+            else
+            {
+                display.print("  ");
+            }
+
+            if (idx < MODE_MENU_COUNT)
+                display.println(modeMenuNames[idx]);
+            else
+                display.println("^");
+        }
+    }
+    else if (currentMenuLevel == MENU_OCTAVE_SELECT)
+    {
+        // Octave selection submenu - show current menu name at top
+        display.setCursor(0, 0);
+        display.println(menuTopItems[2]);
+
+        int totalCount = OCTAVE_MENU_COUNT + 1; // includes Parent
+        int visible = 3;
+
+        // Stable viewport scrolling
+        if (menuOctaveIndex < octaveViewportStart)
+        {
+            octaveViewportStart = menuOctaveIndex;
+        }
+        else if (menuOctaveIndex >= octaveViewportStart + visible)
+        {
+            octaveViewportStart = menuOctaveIndex - visible + 1;
+        }
+
+        if (octaveViewportStart < 0)
+            octaveViewportStart = 0;
+        if (octaveViewportStart > totalCount - visible)
+            octaveViewportStart = totalCount - visible;
+        if (octaveViewportStart < 0)
+            octaveViewportStart = 0;
+
+        for (int i = 0; i < visible; i++)
+        {
+            int idx = octaveViewportStart + i;
+            if (idx >= totalCount)
+                break;
+
+            int y = 18 + i * 18;
+            display.setCursor(0, y);
+            if (idx == menuOctaveIndex)
+            {
+                display.print("> ");
+            }
+            else
+            {
+                display.print("  ");
+            }
+
+            if (idx < OCTAVE_MENU_COUNT)
+                display.println(octaveMenuNames[idx]);
+            else
+                display.println("^");
+        }
+    }
+
+    display.display();
+}
+
+void renderFadeScreen()
+{
+    display.clearDisplay();
+    display.setTextSize(1);
+
+    // if no fade is actually in progress, go back to home to avoid a blank screen
+    if (!chordFading)
+    {
+        currentScreen = SCREEN_HOME;
+    }
+    else
+    {
+        // compute progress (0..1)
+        float progress = 0.0f;
+        if (chordFadeDurationMs > 0)
+        {
+            unsigned long nowMs = millis();
+            long elapsed = (long)(nowMs - chordFadeStartMs);
+            if (elapsed < 0)
+                elapsed = 0;
+            if (elapsed > (long)chordFadeDurationMs)
+                elapsed = chordFadeDurationMs;
+            progress = (float)elapsed / (float)chordFadeDurationMs;
+        }
+        int barW = SCREEN_WIDTH - (int)(progress * (float)SCREEN_WIDTH);
+        // draw filled bar (starts full and empties as progress increases)
+        display.fillRect(0, 0, barW, SCREEN_HEIGHT, SSD1306_WHITE);
+        // draw the word "FADEOUT" in inverse color centered
+        char buf[8];
+        sprintf(buf, "%s", "FADEOUT");
+        display.setTextSize(2);
+        display.setTextColor(SSD1306_BLACK);
+        int tx = (SCREEN_WIDTH - (6 * strlen(buf))) / 2; // approx width per char
+        int ty = (SCREEN_HEIGHT / 2) - 8;
+        if (tx < 0)
+            tx = 0;
+        display.setCursor(tx, ty);
+        display.println(buf);
+        display.setTextColor(SSD1306_WHITE);
+    }
+
+    display.display();
+}

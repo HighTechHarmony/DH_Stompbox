@@ -1,6 +1,11 @@
 #include "NVRAM.h"
 #include <EEPROM.h>
 
+// Define global variables declared as extern in NVRAM.h
+int currentKey = 0;             // 0=C, 1=C#, 2=D, etc. (chromatic scale)
+bool currentModeIsMajor = true; // true=major, false=minor
+int currentOctaveShift = 0;     // -1..2
+
 void saveNVRAM()
 {
     EEPROM.write(NVRAM_SIGNATURE_ADDR, NVRAM_SIGNATURE);
@@ -8,8 +13,10 @@ void saveNVRAM()
     EEPROM.write(NVRAM_MODE_ADDR, (uint8_t)(currentModeIsMajor ? 1 : 0));
     // store octave shifted by +2 to fit into unsigned byte (valid -1..2 -> 1..4)
     int8_t enc = currentOctaveShift + 2;
-    if (enc < 0) enc = 0;
-    if (enc > 255) enc = 255;
+    if (enc < 0)
+        enc = 0;
+    if (enc > 255)
+        enc = 255;
     EEPROM.write(NVRAM_OCTAVE_ADDR, (uint8_t)enc);
 }
 
@@ -18,7 +25,8 @@ void loadNVRAM()
     if (EEPROM.read(NVRAM_SIGNATURE_ADDR) == NVRAM_SIGNATURE)
     {
         uint8_t k = EEPROM.read(NVRAM_KEY_ADDR);
-        if (k < 12) currentKey = k;
+        if (k < 12)
+            currentKey = k;
         uint8_t m = EEPROM.read(NVRAM_MODE_ADDR);
         currentModeIsMajor = (m == 1);
         Serial.print("NVRAM: loaded key=");

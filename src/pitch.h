@@ -1,0 +1,16 @@
+#ifndef PITCH_H
+#define PITCH_H
+
+#include <Arduino.h>
+#include <Audio.h>
+
+// Pitch detection object
+extern AudioAnalyzeNoteFrequency noteDetect;
+
+// Pitch tracking state
+extern float lastDetectedFrequency;
+
+void setupPitchDetection();
+void updatePitchDetection(float &frequency, float &probability, const char *&noteName);
+
+#endif // PITCH_H
