@@ -138,4 +138,17 @@ void updatePitchDetection(float &frequency, float &probability, const char *&not
     }
 }
 
-// optionally free in a cleanup routine (not required)
+void resetPitchDetection()
+{
+    // Clear median filter buffer
+    for (int i = 0; i < 3; i++)
+    {
+        freqBuf[i] = 0.0f;
+    }
+    freqBufIdx = 0;
+
+    // Reset last detected frequency so chord doesn't use stale data
+    lastDetectedFrequency = 0.0f;
+
+    Serial.println("Pitch detection reset");
+}

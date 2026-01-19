@@ -128,10 +128,13 @@ void loop()
     // FS1 press edge: if chord was suppressed (stopped by FS2), re-enable it
     if (fs1_raw && !prevFs1)
     {
+        // Reset pitch detection to clear stale frequency data
+        resetPitchDetection();
+
         if (chordSuppressed)
         {
-            float tonicToUse = (lastDetectedFrequency > 1.0f) ? lastDetectedFrequency : currentChordTonic;
-            startChord(potNorm, tonicToUse, currentKey, currentModeIsMajor);
+            // Start with tonic=0; chord will update once fresh pitch is detected
+            startChord(potNorm, 0.0f, currentKey, currentModeIsMajor);
         }
     }
 
