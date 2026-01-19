@@ -22,6 +22,7 @@ AudioOutputI2S audioOutput;           // Audio shield output
 AudioMixer4 mixerLeft;                // Mix input + synth for left channel
 AudioMixer4 mixerRight;               // Mix input + synth for right channel
 AudioAnalyzeNoteFrequency noteDetect; // Pitch detection
+AudioAnalyzePeak peak1;               // Input peak detection for test mode
 
 // Reverb + wet/dry mixers
 AudioEffectFreeverb reverb;       // stereo freeverb
@@ -54,6 +55,9 @@ AudioConnection patchInR(audioInput, 1, mixerRight, 0); // right input → mixer
 
 // Connect input to pitch detector (use left channel)
 AudioConnection patchPitch(audioInput, 0, noteDetect, 0);
+
+// Connect input to peak analyzer for test mode
+AudioConnection patchPeak(audioInput, 0, peak1, 0);
 
 // Connect synth to mixers (root, minor 3rd, 5th)
 AudioConnection patchSynthL(myEffect, 0, mixerLeft, 1);    // synth root → mixer L ch1
@@ -173,6 +177,12 @@ int menuTopIndex = 0;        // 0=Key, 1=Mode
 int menuKeyIndex = 0;        // 0-11 for key selection
 int menuModeIndex = 0;       // 0=Major, 1=Minor
 int menuOctaveIndex = 1;     // index into octave options (default 0)
+
+// Viewport tracking for scrolling submenus
+int keyViewportStart = 0;
+int modeViewportStart = 0;
+int octaveViewportStart = 0;
+int topViewportStart = 0;
 
 // Menu display names
 const char* menuTopItems[] = {"Key", "Mode", "Octave"};
@@ -398,6 +408,101 @@ void updateChordVolume(float potNorm)
     }
 }
 
+/************* Hardware Test Mode ****************/
+void hardwareTestMode()
+{
+    // Start continuous 1kHz tone at 0.5 amplitude
+    myEffect.frequency(1000);
+    myEffect.amplitude(0.5);
+    myEffect2.amplitude(0);
+    myEffect3.amplitude(0);
+
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+    display.println("HARDWARE TEST MODE");
+    display.display();
+    delay(1000);
+
+    while (true)  // infinite loop - only exit is reset
+    {
+        // Read inputs
+        bool encButton = !digitalRead(ENC_BTN);
+        bool fs1 = !digitalRead(FOOT1);
+        bool fs2 = !digitalRead(FOOT2);
+        int potRaw = analogRead(POT_PIN);
+
+        // Read peak input level for bargraph
+        float peakL = 0.0f;
+        if (peak1.available())
+        {
+            peakL = peak1.read();  // Returns 0.0-1.0 range
+        }
+
+        // Display diagnostics
+        display.clearDisplay();
+        display.setTextSize(1);
+        display.setTextColor(SSD1306_WHITE);
+        
+        int y = 0;
+        
+        // Input level bargraph
+        display.setCursor(0, y);
+        display.print("Input:");
+        int barWidth = (int)(peakL * 80.0f);
+        display.drawRect(40, y, 82, 8, SSD1306_WHITE);
+        if (barWidth > 0)
+        {
+            display.fillRect(41, y + 1, barWidth, 6, SSD1306_WHITE);
+        }
+        y += 10;
+
+        // Audio shield status
+        display.setCursor(0, y);
+        display.print("AudioShield: ");
+        display.println(audioShieldEnabled ? "ENABLED" : "DISABLED");
+        y += 10;
+
+        // Encoder and button
+        display.setCursor(0, y);
+        display.print("Enc: ");
+        display.print(encoderPosition);
+        display.print(" Btn: ");
+        display.println(encButton ? "ON" : "off");
+        y += 10;
+
+        // Footswitches
+        display.setCursor(0, y);
+        display.print("FS1: ");
+        display.print(fs1 ? "ON" : "off");
+        display.print("  FS2: ");
+        display.println(fs2 ? "ON" : "off");
+        y += 10;
+
+        // Pot value
+        display.setCursor(0, y);
+        display.print("Pot raw: ");
+        display.println(potRaw);
+
+        display.display();
+
+        // Serial output for debugging
+        Serial.print(" Enc:");
+        Serial.print(encoderPosition);
+        Serial.print(" Btn:");
+        Serial.print(encButton ? "ON" : "off");
+        Serial.print(" FS1:");
+        Serial.print(fs1 ? "ON" : "off");
+        Serial.print(" FS2:");
+        Serial.print(fs2 ? "ON" : "off");
+        Serial.print(" Pot:");
+        Serial.println(potRaw);
+
+        delay(50);
+    }
+}
+
 /************* Setup   ****************/
 void setup()
 {
@@ -533,6 +638,14 @@ void setup()
     attachInterrupt(digitalPinToInterrupt(ENC_B), encoderISR, CHANGE);
 
     Serial.println("=== SETUP COMPLETE ===");
+
+    // Check for hardware test mode (FS1 held at startup)
+    if (!digitalRead(FOOT1))  // FS1 is active low
+    {
+        Serial.println("*** ENTERING HARDWARE TEST MODE ***");
+        hardwareTestMode();
+        // Never returns
+    }
 }
 
 /************* Loop    ****************/
@@ -980,13 +1093,27 @@ void loop()
             display.setCursor(0, 0);
             display.println("Menu");
 
-            // Show top items + Parent at end
-            int visibleCount = MENU_TOP_COUNT + 1; // includes Parent
-            for (int i = 0; i < visibleCount; i++)
+            // Show top items with Parent at end using stable viewport scrolling
+            int totalCount = MENU_TOP_COUNT + 1; // includes Parent
+            int visible = 3; // number of lines to show (fits size2)
+
+            // Stable viewport scrolling for top menu
+            if (menuTopIndex < topViewportStart) {
+                topViewportStart = menuTopIndex;
+            } else if (menuTopIndex >= topViewportStart + visible) {
+                topViewportStart = menuTopIndex - visible + 1;
+            }
+            if (topViewportStart < 0) topViewportStart = 0;
+            if (topViewportStart > totalCount - visible) topViewportStart = totalCount - visible;
+            if (topViewportStart < 0) topViewportStart = 0;
+
+            for (int i = 0; i < visible; i++)
             {
+                int idx = topViewportStart + i;
+                if (idx >= totalCount) break;
                 int y = 18 + i * 18;
                 display.setCursor(0, y);
-                if (i == menuTopIndex)
+                if (idx == menuTopIndex)
                 {
                     display.print("> ");
                 }
@@ -995,8 +1122,8 @@ void loop()
                     display.print("  ");
                 }
 
-                if (i < MENU_TOP_COUNT)
-                    display.println(menuTopItems[i]);
+                if (idx < MENU_TOP_COUNT)
+                    display.println(menuTopItems[idx]);
                 else
                     display.println("^");
             }
@@ -1010,14 +1137,27 @@ void loop()
             // Build a scrolling view over keys + Parent
             int totalCount = KEY_MENU_COUNT + 1; // includes Parent
             int visible = 3; // number of lines to show (fits size2)
-            int startIdx = menuKeyIndex - 1;
-            if (startIdx < 0) startIdx = 0;
-            if (startIdx > totalCount - visible) startIdx = totalCount - visible;
-            if (startIdx < 0) startIdx = 0;
+            
+            // Stable viewport scrolling: only scroll when selection approaches edges
+            // Keep selection within comfortable range (position 0-2 visible)
+            if (menuKeyIndex < keyViewportStart) {
+                // Scrolled up past top of viewport
+                keyViewportStart = menuKeyIndex;
+            } else if (menuKeyIndex >= keyViewportStart + visible) {
+                // Scrolled down past bottom of viewport
+                keyViewportStart = menuKeyIndex - visible + 1;
+            }
+            
+            // Clamp viewport to valid range
+            if (keyViewportStart < 0) keyViewportStart = 0;
+            if (keyViewportStart > totalCount - visible) keyViewportStart = totalCount - visible;
+            if (keyViewportStart < 0) keyViewportStart = 0;
 
             for (int i = 0; i < visible; i++)
             {
-                int idx = startIdx + i;
+                int idx = keyViewportStart + i;
+                if (idx >= totalCount) break;
+                
                 int y = 18 + i * 18;
                 display.setCursor(0, y);
                 if (idx == menuKeyIndex)
@@ -1043,14 +1183,23 @@ void loop()
 
             int totalCount = MODE_MENU_COUNT + 1; // includes Parent
             int visible = 3;
-            int startIdx = menuModeIndex - 1;
-            if (startIdx < 0) startIdx = 0;
-            if (startIdx > totalCount - visible) startIdx = totalCount - visible;
-            if (startIdx < 0) startIdx = 0;
+            
+            // Stable viewport scrolling
+            if (menuModeIndex < modeViewportStart) {
+                modeViewportStart = menuModeIndex;
+            } else if (menuModeIndex >= modeViewportStart + visible) {
+                modeViewportStart = menuModeIndex - visible + 1;
+            }
+            
+            if (modeViewportStart < 0) modeViewportStart = 0;
+            if (modeViewportStart > totalCount - visible) modeViewportStart = totalCount - visible;
+            if (modeViewportStart < 0) modeViewportStart = 0;
 
             for (int i = 0; i < visible; i++)
             {
-                int idx = startIdx + i;
+                int idx = modeViewportStart + i;
+                if (idx >= totalCount) break;
+                
                 int y = 18 + i * 18;
                 display.setCursor(0, y);
                 if (idx == menuModeIndex)
@@ -1076,14 +1225,23 @@ void loop()
 
             int totalCount = OCTAVE_MENU_COUNT + 1; // includes Parent
             int visible = 3;
-            int startIdx = menuOctaveIndex - 1;
-            if (startIdx < 0) startIdx = 0;
-            if (startIdx > totalCount - visible) startIdx = totalCount - visible;
-            if (startIdx < 0) startIdx = 0;
+            
+            // Stable viewport scrolling
+            if (menuOctaveIndex < octaveViewportStart) {
+                octaveViewportStart = menuOctaveIndex;
+            } else if (menuOctaveIndex >= octaveViewportStart + visible) {
+                octaveViewportStart = menuOctaveIndex - visible + 1;
+            }
+            
+            if (octaveViewportStart < 0) octaveViewportStart = 0;
+            if (octaveViewportStart > totalCount - visible) octaveViewportStart = totalCount - visible;
+            if (octaveViewportStart < 0) octaveViewportStart = 0;
 
             for (int i = 0; i < visible; i++)
             {
-                int idx = startIdx + i;
+                int idx = octaveViewportStart + i;
+                if (idx >= totalCount) break;
+                
                 int y = 18 + i * 18;
                 display.setCursor(0, y);
                 if (idx == menuOctaveIndex)
