@@ -339,6 +339,55 @@ void renderMenuScreen()
                 display.println("^");
         }
     }
+    else if (currentMenuLevel == MENU_MUTING_SELECT)
+    {
+        // Muting selection submenu - show current menu name at top
+        display.setCursor(0, 0);
+        display.println(menuTopItems[4]);
+
+        int totalCount = MUTING_MENU_COUNT + 1; // includes Parent
+        int visible = 3;
+
+        // Stable viewport scrolling
+        if (menuMutingIndex < mutingViewportStart)
+        {
+            mutingViewportStart = menuMutingIndex;
+        }
+        else if (menuMutingIndex >= mutingViewportStart + visible)
+        {
+            mutingViewportStart = menuMutingIndex - visible + 1;
+        }
+
+        if (mutingViewportStart < 0)
+            mutingViewportStart = 0;
+        if (mutingViewportStart > totalCount - visible)
+            mutingViewportStart = totalCount - visible;
+        if (mutingViewportStart < 0)
+            mutingViewportStart = 0;
+
+        for (int i = 0; i < visible; i++)
+        {
+            int idx = mutingViewportStart + i;
+            if (idx >= totalCount)
+                break;
+
+            int y = 18 + i * 18;
+            display.setCursor(0, y);
+            if (idx == menuMutingIndex)
+            {
+                display.print("> ");
+            }
+            else
+            {
+                display.print("  ");
+            }
+
+            if (idx < MUTING_MENU_COUNT)
+                display.println(mutingMenuNames[idx]);
+            else
+                display.println("^");
+        }
+    }
 
     display.display();
 }

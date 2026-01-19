@@ -1,6 +1,7 @@
 #include "pitch.h"
 #include "NVRAM.h"
 #include "audio.h"
+#include "config.h"
 
 // Pitch detection object
 AudioAnalyzeNoteFrequency noteDetect;
@@ -18,10 +19,11 @@ AudioConnection *patchPitchPtr = nullptr;
 
 void setupPitchDetection()
 {
-    // Initialize pitch detector with threshold
-    // threshold: 0.0 = very sensitive, 1.0 = very picky (0.10 is good for general use)
-    noteDetect.begin(0.10);
-    Serial.println("Pitch detector initialized with threshold 0.10");
+    // Initialize pitch detector with threshold (tunable via config)
+    // threshold: 0.0 = very sensitive, 1.0 = very picky
+    noteDetect.begin(NOTE_DETECT_THRESHOLD);
+    Serial.print("Pitch detector initialized with threshold ");
+    Serial.println(NOTE_DETECT_THRESHOLD);
 
     // create the connection at runtime so initialization order is safe
     if (!patchPitchPtr)

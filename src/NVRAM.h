@@ -11,11 +11,14 @@
 #define NVRAM_OCTAVE_ADDR 3
 // Address for Bass/Guitar mode (0=Guitar, 1=Bass)
 #define NVRAM_BASSGUIT_ADDR 4
+// Address for Muting (0=Disabled, 1=Enabled)
+#define NVRAM_MUTING_ADDR 5
 
 extern int currentKey;
 extern bool currentModeIsMajor;
 extern int currentOctaveShift;
 extern bool currentInstrumentIsBass;
+extern bool currentMutingEnabled;
 
 void saveNVRAM();
 void loadNVRAM();

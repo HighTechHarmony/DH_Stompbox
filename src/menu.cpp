@@ -16,10 +16,11 @@ int modeViewportStart = 0;
 int octaveViewportStart = 0;
 int topViewportStart = 0;
 int bassGuitViewportStart = 0;
+int mutingViewportStart = 0;
 
 // Menu display names
-const char *menuTopItems[] = {"MusicKey", "Maj/Min", "Octave", "Bass/Gtr"};
-const int MENU_TOP_COUNT = 4;
+const char *menuTopItems[] = {"MusicKey", "Maj/Min", "Octave", "Bass/Gtr", "Muting"};
+const int MENU_TOP_COUNT = 5;
 
 const char *keyMenuNames[] = {"A", "Bb", "B", "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab"};
 const int KEY_MENU_COUNT = 12;
@@ -36,6 +37,11 @@ const int BASSGUIT_MENU_COUNT = 2;
 const int octaveOptions[] = {-1, 0, 1, 2};
 const char *octaveMenuNames[] = {"-1", "0", "1", "2"};
 const int OCTAVE_MENU_COUNT = 4;
+
+// Muting options
+const char *mutingMenuNames[] = {"Disabled", "Enabled"};
+const int MUTING_MENU_COUNT = 2;
+int menuMutingIndex = 0; // 0=Disabled, 1=Enabled
 
 void handleMenuEncoder(int delta)
 {
@@ -78,6 +84,14 @@ void handleMenuEncoder(int delta)
             menuBassGuitIndex = 0;
         if (menuBassGuitIndex > BASSGUIT_MENU_COUNT)
             menuBassGuitIndex = BASSGUIT_MENU_COUNT; // allow Parent
+    }
+    else if (currentMenuLevel == MENU_MUTING_SELECT)
+    {
+        menuMutingIndex += delta;
+        if (menuMutingIndex < 0)
+            menuMutingIndex = 0;
+        if (menuMutingIndex > MUTING_MENU_COUNT)
+            menuMutingIndex = MUTING_MENU_COUNT; // allow Parent
     }
 }
 
@@ -122,6 +136,12 @@ void handleMenuButton()
             currentMenuLevel = MENU_BASSGUIT_SELECT;
             // Initialize to current instrument setting (0=Bass,1=Guitar)
             menuBassGuitIndex = currentInstrumentIsBass ? 0 : 1;
+        }
+        else if (menuTopIndex == 4) // Muting
+        {
+            currentMenuLevel = MENU_MUTING_SELECT;
+            // Initialize to current muting setting (0=Disabled,1=Enabled)
+            menuMutingIndex = currentMutingEnabled ? 1 : 0;
         }
     }
     else if (currentMenuLevel == MENU_KEY_SELECT)
@@ -182,6 +202,21 @@ void handleMenuButton()
         {
             // menuBassGuitIndex: 0=Bass,1=Guitar
             currentInstrumentIsBass = (menuBassGuitIndex == 0);
+            saveNVRAM();
+            currentMenuLevel = MENU_TOP;
+        }
+    }
+    else if (currentMenuLevel == MENU_MUTING_SELECT)
+    {
+        // If Parent selected, return to top. Otherwise apply muting setting.
+        if (menuMutingIndex == MUTING_MENU_COUNT)
+        {
+            currentMenuLevel = MENU_TOP;
+        }
+        else
+        {
+            // menuMutingIndex: 0=Disabled,1=Enabled
+            currentMutingEnabled = (menuMutingIndex == 1);
             saveNVRAM();
             currentMenuLevel = MENU_TOP;
         }

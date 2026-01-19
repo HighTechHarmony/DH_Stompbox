@@ -79,7 +79,8 @@ void loop()
     bool fs1 = fs1_raw || (now < fs1ForcedUntilMs);
 
     // Optionally suppress chord audio output while the FS1 forced window is active
-    bool suppressChordDuringTransition = (SUPPRESS_CHORD_OUTPUT_DURING_TRANSITIONS && (now < fs1ForcedUntilMs));
+    // Muting menu overrides the behavior: when Muting is Enabled -> suppress during transition, when Disabled -> do not suppress
+    bool suppressChordDuringTransition = (now < fs1ForcedUntilMs) && currentMutingEnabled;
     if (suppressChordDuringTransition)
     {
         // Only mute if not currently fading (let fades complete)
