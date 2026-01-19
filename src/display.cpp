@@ -388,6 +388,55 @@ void renderMenuScreen()
                 display.println("^");
         }
     }
+    else if (currentMenuLevel == MENU_SYNTHSND_SELECT)
+    {
+        // Synth Sound selection submenu - show current menu name at top
+        display.setCursor(0, 0);
+        display.println(menuTopItems[5]);
+
+        int totalCount = SYNTHSND_MENU_COUNT + 1; // includes Parent
+        int visible = 3;
+
+        // Stable viewport scrolling
+        if (menuSynthSndIndex < synthSndViewportStart)
+        {
+            synthSndViewportStart = menuSynthSndIndex;
+        }
+        else if (menuSynthSndIndex >= synthSndViewportStart + visible)
+        {
+            synthSndViewportStart = menuSynthSndIndex - visible + 1;
+        }
+
+        if (synthSndViewportStart < 0)
+            synthSndViewportStart = 0;
+        if (synthSndViewportStart > totalCount - visible)
+            synthSndViewportStart = totalCount - visible;
+        if (synthSndViewportStart < 0)
+            synthSndViewportStart = 0;
+
+        for (int i = 0; i < visible; i++)
+        {
+            int idx = synthSndViewportStart + i;
+            if (idx >= totalCount)
+                break;
+
+            int y = 18 + i * 18;
+            display.setCursor(0, y);
+            if (idx == menuSynthSndIndex)
+            {
+                display.print("> ");
+            }
+            else
+            {
+                display.print("  ");
+            }
+
+            if (idx < SYNTHSND_MENU_COUNT)
+                display.println(synthSndMenuNames[idx]);
+            else
+                display.println("^");
+        }
+    }
 
     display.display();
 }

@@ -13,12 +13,15 @@
 #define NVRAM_BASSGUIT_ADDR 4
 // Address for Muting (0=Disabled, 1=Enabled)
 #define NVRAM_MUTING_ADDR 5
+// Address for Synth Sound (0=Sine, 1=Organ, etc.)
+#define NVRAM_SYNTHSND_ADDR 6
 
 extern int currentKey;
 extern bool currentModeIsMajor;
 extern int currentOctaveShift;
 extern bool currentInstrumentIsBass;
 extern bool currentMutingEnabled;
+extern int currentSynthSound; // 0=Sine, 1=Organ, etc.
 
 void saveNVRAM();
 void loadNVRAM();

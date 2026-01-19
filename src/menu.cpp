@@ -9,6 +9,7 @@ int menuKeyIndex = 0;      // 0-11 for key selection
 int menuModeIndex = 0;     // 0=Major, 1=Minor
 int menuOctaveIndex = 1;   // index into octave options (default 0)
 int menuBassGuitIndex = 0; // 0=Bass, 1=Guitar
+int menuSynthSndIndex = 0; // 0=Sine, 1=Organ
 
 // Viewport tracking for scrolling submenus
 int keyViewportStart = 0;
@@ -17,10 +18,11 @@ int octaveViewportStart = 0;
 int topViewportStart = 0;
 int bassGuitViewportStart = 0;
 int mutingViewportStart = 0;
+int synthSndViewportStart = 0;
 
 // Menu display names
-const char *menuTopItems[] = {"MusicKey", "Maj/Min", "Octave", "Bass/Gtr", "Muting"};
-const int MENU_TOP_COUNT = 5;
+const char *menuTopItems[] = {"MusicKey", "Maj/Min", "Octave", "Bass/Gtr", "Muting", "SynthSnd"};
+const int MENU_TOP_COUNT = 6;
 
 const char *keyMenuNames[] = {"A", "Bb", "B", "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab"};
 const int KEY_MENU_COUNT = 12;
@@ -42,6 +44,10 @@ const int OCTAVE_MENU_COUNT = 4;
 const char *mutingMenuNames[] = {"Disabled", "Enabled"};
 const int MUTING_MENU_COUNT = 2;
 int menuMutingIndex = 0; // 0=Disabled, 1=Enabled
+
+// Synth sound options
+const char *synthSndMenuNames[] = {"Sine", "Organ"};
+const int SYNTHSND_MENU_COUNT = 2;
 
 void handleMenuEncoder(int delta)
 {
@@ -93,6 +99,14 @@ void handleMenuEncoder(int delta)
         if (menuMutingIndex > MUTING_MENU_COUNT)
             menuMutingIndex = MUTING_MENU_COUNT; // allow Parent
     }
+    else if (currentMenuLevel == MENU_SYNTHSND_SELECT)
+    {
+        menuSynthSndIndex += delta;
+        if (menuSynthSndIndex < 0)
+            menuSynthSndIndex = 0;
+        if (menuSynthSndIndex > SYNTHSND_MENU_COUNT)
+            menuSynthSndIndex = SYNTHSND_MENU_COUNT; // allow Parent
+    }
 }
 
 void handleMenuButton()
@@ -142,6 +156,12 @@ void handleMenuButton()
             currentMenuLevel = MENU_MUTING_SELECT;
             // Initialize to current muting setting (0=Disabled,1=Enabled)
             menuMutingIndex = currentMutingEnabled ? 1 : 0;
+        }
+        else if (menuTopIndex == 5) // SynthSnd
+        {
+            currentMenuLevel = MENU_SYNTHSND_SELECT;
+            // Initialize to current synth sound setting
+            menuSynthSndIndex = currentSynthSound;
         }
     }
     else if (currentMenuLevel == MENU_KEY_SELECT)
@@ -217,6 +237,20 @@ void handleMenuButton()
         {
             // menuMutingIndex: 0=Disabled,1=Enabled
             currentMutingEnabled = (menuMutingIndex == 1);
+            saveNVRAM();
+            currentMenuLevel = MENU_TOP;
+        }
+    }
+    else if (currentMenuLevel == MENU_SYNTHSND_SELECT)
+    {
+        // If Parent selected, return to top. Otherwise apply synth sound.
+        if (menuSynthSndIndex == SYNTHSND_MENU_COUNT)
+        {
+            currentMenuLevel = MENU_TOP;
+        }
+        else
+        {
+            currentSynthSound = menuSynthSndIndex;
             saveNVRAM();
             currentMenuLevel = MENU_TOP;
         }

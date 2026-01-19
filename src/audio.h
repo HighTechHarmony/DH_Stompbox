@@ -8,6 +8,13 @@
 extern AudioSynthWaveform myEffect;
 extern AudioSynthWaveform myEffect2;
 extern AudioSynthWaveform myEffect3;
+// Additional oscillators for organ sound (3 per voice)
+extern AudioSynthWaveform myEffectOrg2;
+extern AudioSynthWaveform myEffectOrg3;
+extern AudioSynthWaveform myEffect2Org2;
+extern AudioSynthWaveform myEffect2Org3;
+extern AudioSynthWaveform myEffect3Org2;
+extern AudioSynthWaveform myEffect3Org3;
 extern AudioInputI2S audioInput;
 extern AudioOutputI2S audioOutput;
 extern AudioMixer4 mixerLeft;
@@ -36,6 +43,9 @@ extern float beepAmp;
 void setupAudio();
 void setReverbWet(float wet);
 float getDiatonicThird(float noteFreq, int keyNote, bool isMajor);
+void stopAllOscillators();
+void initSineSound(float tonic, float third, float fifth, float octaveMul, float perVoice);
+void initOrganSound(float tonic, float third, float fifth, float octaveMul, float perVoice);
 void startChord(float potNorm, float tonicFreq, int keyNote, bool isMajor);
 void updateChordTonic(float tonicFreq, int keyNote, bool isMajor);
 void stopChord();

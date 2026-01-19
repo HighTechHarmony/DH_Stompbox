@@ -6,11 +6,18 @@
 AudioSynthWaveform myEffect;
 AudioSynthWaveform myEffect2; // second voice (minor 3rd)
 AudioSynthWaveform myEffect3; // third voice (5th)
-AudioInputI2S audioInput;     // Audio shield input
-AudioOutputI2S audioOutput;   // Audio shield output
-AudioMixer4 mixerLeft;        // Mix input + synth for left channel
-AudioMixer4 mixerRight;       // Mix input + synth for right channel
-AudioAnalyzePeak peak1;       // Input peak detection for test mode
+// Additional oscillators for organ sound
+AudioSynthWaveform myEffectOrg2;
+AudioSynthWaveform myEffectOrg3;
+AudioSynthWaveform myEffect2Org2;
+AudioSynthWaveform myEffect2Org3;
+AudioSynthWaveform myEffect3Org2;
+AudioSynthWaveform myEffect3Org3;
+AudioInputI2S audioInput;   // Audio shield input
+AudioOutputI2S audioOutput; // Audio shield output
+AudioMixer4 mixerLeft;      // Mix input + synth for left channel
+AudioMixer4 mixerRight;     // Mix input + synth for right channel
+AudioAnalyzePeak peak1;     // Input peak detection for test mode
 
 // Reverb + wet/dry mixers
 AudioEffectFreeverb reverb; // stereo freeverb
@@ -51,12 +58,38 @@ AudioConnection patchSynth2L(myEffect2, 0, mixerLeft, 2);  // synth 3rd → mixe
 AudioConnection patchSynth2R(myEffect2, 0, mixerRight, 2); // synth 3rd → mixer R ch2
 AudioConnection patchSynth3L(myEffect3, 0, mixerLeft, 3);  // synth 5th → mixer L ch3
 AudioConnection patchSynth3R(myEffect3, 0, mixerRight, 3); // synth 5th → mixer R ch3
+// Organ sound connections (additional detuned oscillators share same mixer channels)
+AudioConnection patchOrg2L(myEffectOrg2, 0, mixerLeft, 1);
+AudioConnection patchOrg2R(myEffectOrg2, 0, mixerRight, 1);
+AudioConnection patchOrg3L(myEffectOrg3, 0, mixerLeft, 1);
+AudioConnection patchOrg3R(myEffectOrg3, 0, mixerRight, 1);
+AudioConnection patch2Org2L(myEffect2Org2, 0, mixerLeft, 2);
+AudioConnection patch2Org2R(myEffect2Org2, 0, mixerRight, 2);
+AudioConnection patch2Org3L(myEffect2Org3, 0, mixerLeft, 2);
+AudioConnection patch2Org3R(myEffect2Org3, 0, mixerRight, 2);
+AudioConnection patch3Org2L(myEffect3Org2, 0, mixerLeft, 3);
+AudioConnection patch3Org2R(myEffect3Org2, 0, mixerRight, 3);
+AudioConnection patch3Org3L(myEffect3Org3, 0, mixerLeft, 3);
+AudioConnection patch3Org3R(myEffect3Org3, 0, mixerRight, 3);
 AudioConnection patchSynthOnly1L(myEffect, 0, synthOnlyLeft, 0);
 AudioConnection patchSynthOnly2L(myEffect2, 0, synthOnlyLeft, 1);
 AudioConnection patchSynthOnly3L(myEffect3, 0, synthOnlyLeft, 2);
 AudioConnection patchSynthOnly1R(myEffect, 0, synthOnlyRight, 0);
 AudioConnection patchSynthOnly2R(myEffect2, 0, synthOnlyRight, 1);
 AudioConnection patchSynthOnly3R(myEffect3, 0, synthOnlyRight, 2);
+// Organ synth-only mixer connections
+AudioConnection patchSynthOnlyOrg2L(myEffectOrg2, 0, synthOnlyLeft, 0);
+AudioConnection patchSynthOnlyOrg3L(myEffectOrg3, 0, synthOnlyLeft, 0);
+AudioConnection patchSynthOnly2Org2L(myEffect2Org2, 0, synthOnlyLeft, 1);
+AudioConnection patchSynthOnly2Org3L(myEffect2Org3, 0, synthOnlyLeft, 1);
+AudioConnection patchSynthOnly3Org2L(myEffect3Org2, 0, synthOnlyLeft, 2);
+AudioConnection patchSynthOnly3Org3L(myEffect3Org3, 0, synthOnlyLeft, 2);
+AudioConnection patchSynthOnlyOrg2R(myEffectOrg2, 0, synthOnlyRight, 0);
+AudioConnection patchSynthOnlyOrg3R(myEffectOrg3, 0, synthOnlyRight, 0);
+AudioConnection patchSynthOnly2Org2R(myEffect2Org2, 0, synthOnlyRight, 1);
+AudioConnection patchSynthOnly2Org3R(myEffect2Org3, 0, synthOnlyRight, 1);
+AudioConnection patchSynthOnly3Org2R(myEffect3Org2, 0, synthOnlyRight, 2);
+AudioConnection patchSynthOnly3Org3R(myEffect3Org3, 0, synthOnlyRight, 2);
 AudioConnection patchReverbInL(synthOnlyLeft, 0, reverb, 0);
 AudioConnection patchReverbInR(synthOnlyRight, 0, reverb, 1);
 AudioConnection patchDryL(mixerLeft, 0, wetDryLeft, 0);
@@ -121,6 +154,67 @@ float getDiatonicThird(float noteFreq, int keyNote, bool isMajor)
     return powf(2.0f, thirdSemitones / 12.0f);
 }
 
+void stopAllOscillators()
+{
+    myEffect.amplitude(0);
+    myEffect2.amplitude(0);
+    myEffect3.amplitude(0);
+    myEffectOrg2.amplitude(0);
+    myEffectOrg3.amplitude(0);
+    myEffect2Org2.amplitude(0);
+    myEffect2Org3.amplitude(0);
+    myEffect3Org2.amplitude(0);
+    myEffect3Org3.amplitude(0);
+}
+
+void initSineSound(float tonic, float third, float fifth, float octaveMul, float perVoice)
+{
+    // Original sine wave sound - single oscillator per voice
+    stopAllOscillators();
+
+    myEffect.frequency(tonic * octaveMul);
+    myEffect2.frequency(tonic * third * octaveMul);
+    myEffect3.frequency(tonic * fifth * octaveMul);
+
+    myEffect.amplitude(perVoice);
+    myEffect2.amplitude(perVoice);
+    myEffect3.amplitude(perVoice);
+}
+
+void initOrganSound(float tonic, float third, float fifth, float octaveMul, float perVoice)
+{
+    // Organ sound - 3 slightly detuned oscillators per voice
+    stopAllOscillators();
+
+    float detune1 = 1.002f;            // +3.5 cents
+    float detune2 = 0.998f;            // -3.5 cents
+    float ampPerOsc = perVoice / 3.0f; // divide amplitude across 3 oscillators
+
+    // Root voice (3 oscillators)
+    myEffect.frequency(tonic * octaveMul);
+    myEffect.amplitude(ampPerOsc);
+    myEffectOrg2.frequency(tonic * octaveMul * detune1);
+    myEffectOrg2.amplitude(ampPerOsc);
+    myEffectOrg3.frequency(tonic * octaveMul * detune2);
+    myEffectOrg3.amplitude(ampPerOsc);
+
+    // Third voice (3 oscillators)
+    myEffect2.frequency(tonic * third * octaveMul);
+    myEffect2.amplitude(ampPerOsc);
+    myEffect2Org2.frequency(tonic * third * octaveMul * detune1);
+    myEffect2Org2.amplitude(ampPerOsc);
+    myEffect2Org3.frequency(tonic * third * octaveMul * detune2);
+    myEffect2Org3.amplitude(ampPerOsc);
+
+    // Fifth voice (3 oscillators)
+    myEffect3.frequency(tonic * fifth * octaveMul);
+    myEffect3.amplitude(ampPerOsc);
+    myEffect3Org2.frequency(tonic * fifth * octaveMul * detune1);
+    myEffect3Org2.amplitude(ampPerOsc);
+    myEffect3Org3.frequency(tonic * fifth * octaveMul * detune2);
+    myEffect3Org3.amplitude(ampPerOsc);
+}
+
 void startChord(float potNorm, float tonicFreq, int keyNote, bool isMajor)
 {
     // choose tonic: passed in or last detected
@@ -140,15 +234,19 @@ void startChord(float potNorm, float tonicFreq, int keyNote, bool isMajor)
 
     // apply octave shift
     float octaveMul = powf(2.0f, (float)currentOctaveShift);
-    myEffect.frequency(tonic * octaveMul);
-    myEffect2.frequency(tonic * third * octaveMul);
-    myEffect3.frequency(tonic * fifth * octaveMul);
 
     // distribute amplitude to avoid clipping (sum ~= potNorm)
     float perVoice = potNorm / 3.0f;
-    myEffect.amplitude(perVoice);
-    myEffect2.amplitude(perVoice);
-    myEffect3.amplitude(perVoice);
+
+    // Initialize sound based on currentSynthSound selection
+    if (currentSynthSound == 1) // Organ
+    {
+        initOrganSound(tonic, third, fifth, octaveMul, perVoice);
+    }
+    else // Sine (default)
+    {
+        initSineSound(tonic, third, fifth, octaveMul, perVoice);
+    }
 
     if (!chordActive)
     {
@@ -173,9 +271,31 @@ void updateChordTonic(float tonicFreq, int keyNote, bool isMajor)
 
     // apply octave shift
     float octaveMul = powf(2.0f, (float)currentOctaveShift);
-    myEffect.frequency(tonicFreq * octaveMul);
-    myEffect2.frequency(tonicFreq * third * octaveMul);
-    myEffect3.frequency(tonicFreq * fifth * octaveMul);
+
+    // Update frequencies based on current sound
+    if (currentSynthSound == 1) // Organ
+    {
+        float detune1 = 1.002f;
+        float detune2 = 0.998f;
+
+        myEffect.frequency(tonicFreq * octaveMul);
+        myEffectOrg2.frequency(tonicFreq * octaveMul * detune1);
+        myEffectOrg3.frequency(tonicFreq * octaveMul * detune2);
+
+        myEffect2.frequency(tonicFreq * third * octaveMul);
+        myEffect2Org2.frequency(tonicFreq * third * octaveMul * detune1);
+        myEffect2Org3.frequency(tonicFreq * third * octaveMul * detune2);
+
+        myEffect3.frequency(tonicFreq * fifth * octaveMul);
+        myEffect3Org2.frequency(tonicFreq * fifth * octaveMul * detune1);
+        myEffect3Org3.frequency(tonicFreq * fifth * octaveMul * detune2);
+    }
+    else // Sine
+    {
+        myEffect.frequency(tonicFreq * octaveMul);
+        myEffect2.frequency(tonicFreq * third * octaveMul);
+        myEffect3.frequency(tonicFreq * fifth * octaveMul);
+    }
 
     Serial.println(">>> CHORD UPDATE tonic " + String(tonicFreq) + "Hz");
 }
@@ -199,9 +319,7 @@ void stopChord()
     }
 
     // Immediate stop (no fade)
-    myEffect.amplitude(0);
-    myEffect2.amplitude(0);
-    myEffect3.amplitude(0);
+    stopAllOscillators();
     digitalWrite(LED_BUILTIN, LOW);
     chordActive = false;
     // suppress automatic restart after an explicit stop (e.g., FS2 press)
@@ -218,10 +336,27 @@ void updateChordVolume(float potNorm)
         // otherwise the fade will never progress.
         if (!chordFading)
         {
-            float perVoice = potNorm / 3.0f;
-            myEffect.amplitude(perVoice);
-            myEffect2.amplitude(perVoice);
-            myEffect3.amplitude(perVoice);
+            // Apply volume based on current sound
+            if (currentSynthSound == 1) // Organ
+            {
+                float ampPerOsc = potNorm / 9.0f;
+                myEffect.amplitude(ampPerOsc);
+                myEffectOrg2.amplitude(ampPerOsc);
+                myEffectOrg3.amplitude(ampPerOsc);
+                myEffect2.amplitude(ampPerOsc);
+                myEffect2Org2.amplitude(ampPerOsc);
+                myEffect2Org3.amplitude(ampPerOsc);
+                myEffect3.amplitude(ampPerOsc);
+                myEffect3Org2.amplitude(ampPerOsc);
+                myEffect3Org3.amplitude(ampPerOsc);
+            }
+            else // Sine
+            {
+                float perVoice = potNorm / 3.0f;
+                myEffect.amplitude(perVoice);
+                myEffect2.amplitude(perVoice);
+                myEffect3.amplitude(perVoice);
+            }
             // Update overall stored amplitude
             beepAmp = potNorm;
         }
@@ -237,9 +372,7 @@ void updateChordFade()
         if (elapsed >= chordFadeDurationMs)
         {
             // Fade complete: ensure amplitudes are zero and mark stopped
-            myEffect.amplitude(0);
-            myEffect2.amplitude(0);
-            myEffect3.amplitude(0);
+            stopAllOscillators();
             digitalWrite(LED_BUILTIN, LOW);
             chordFading = false;
             chordActive = false;
@@ -251,10 +384,28 @@ void updateChordFade()
         {
             float t = (float)elapsed / (float)chordFadeDurationMs; // 0..1
             float curAmp = chordFadeStartAmp * (1.0f - t);
-            float perVoice = curAmp / 3.0f;
-            myEffect.amplitude(perVoice);
-            myEffect2.amplitude(perVoice);
-            myEffect3.amplitude(perVoice);
+
+            // Calculate per-oscillator amplitude based on current sound
+            if (currentSynthSound == 1) // Organ
+            {
+                float ampPerOsc = curAmp / 9.0f; // 9 total oscillators
+                myEffect.amplitude(ampPerOsc);
+                myEffectOrg2.amplitude(ampPerOsc);
+                myEffectOrg3.amplitude(ampPerOsc);
+                myEffect2.amplitude(ampPerOsc);
+                myEffect2Org2.amplitude(ampPerOsc);
+                myEffect2Org3.amplitude(ampPerOsc);
+                myEffect3.amplitude(ampPerOsc);
+                myEffect3Org2.amplitude(ampPerOsc);
+                myEffect3Org3.amplitude(ampPerOsc);
+            }
+            else // Sine
+            {
+                float perVoice = curAmp / 3.0f;
+                myEffect.amplitude(perVoice);
+                myEffect2.amplitude(perVoice);
+                myEffect3.amplitude(perVoice);
+            }
             beepAmp = curAmp;
         }
     }
@@ -299,7 +450,32 @@ void setupAudio()
     myEffect3.frequency(1000);
     myEffect3.amplitude(0);
 
-    Serial.println("Waveforms initialized (3 voices for chord)");
+    // Initialize organ sound oscillators
+    myEffectOrg2.begin(WAVEFORM_SINE);
+    myEffectOrg2.frequency(1000);
+    myEffectOrg2.amplitude(0);
+
+    myEffectOrg3.begin(WAVEFORM_SINE);
+    myEffectOrg3.frequency(1000);
+    myEffectOrg3.amplitude(0);
+
+    myEffect2Org2.begin(WAVEFORM_SINE);
+    myEffect2Org2.frequency(1000);
+    myEffect2Org2.amplitude(0);
+
+    myEffect2Org3.begin(WAVEFORM_SINE);
+    myEffect2Org3.frequency(1000);
+    myEffect2Org3.amplitude(0);
+
+    myEffect3Org2.begin(WAVEFORM_SINE);
+    myEffect3Org2.frequency(1000);
+    myEffect3Org2.amplitude(0);
+
+    myEffect3Org3.begin(WAVEFORM_SINE);
+    myEffect3Org3.frequency(1000);
+    myEffect3Org3.amplitude(0);
+
+    Serial.println("Waveforms initialized (9 oscillators: 3 for sine, 9 for organ)");
 
 // Configure mixers
 #define BOOST_INPUT_GAIN false

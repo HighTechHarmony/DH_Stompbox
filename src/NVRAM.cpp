@@ -8,6 +8,7 @@ int currentOctaveShift = 0;           // -1..2
 bool currentInstrumentIsBass = false; // false=Guitar (default), true=Bass
 // Muting setting persisted (false=Disabled, true=Enabled)
 bool currentMutingEnabled = false;
+int currentSynthSound = 0; // 0=Sine (default), 1=Organ
 
 void saveNVRAM()
 {
@@ -16,6 +17,7 @@ void saveNVRAM()
     EEPROM.write(NVRAM_MODE_ADDR, (uint8_t)(currentModeIsMajor ? 1 : 0));
     EEPROM.write(NVRAM_BASSGUIT_ADDR, (uint8_t)(currentInstrumentIsBass ? 1 : 0));
     EEPROM.write(NVRAM_MUTING_ADDR, (uint8_t)(currentMutingEnabled ? 1 : 0));
+    EEPROM.write(NVRAM_SYNTHSND_ADDR, (uint8_t)currentSynthSound);
     // store octave shifted by +2 to fit into unsigned byte (valid -1..2 -> 1..4)
     int8_t enc = currentOctaveShift + 2;
     if (enc < 0)
@@ -60,6 +62,12 @@ void loadNVRAM()
         currentMutingEnabled = (mu == 1);
         Serial.print(" muting=");
         Serial.println(currentMutingEnabled ? "Enabled" : "Disabled");
+        // load synth sound (0 = Sine, 1 = Organ, etc.)
+        uint8_t ss = EEPROM.read(NVRAM_SYNTHSND_ADDR);
+        if (ss <= 1) // validate range
+            currentSynthSound = ss;
+        Serial.print(" synthSound=");
+        Serial.println(currentSynthSound == 0 ? "Sine" : "Organ");
     }
     else
     {
@@ -68,7 +76,6 @@ void loadNVRAM()
         currentKey = 0; // C
         currentModeIsMajor = true;
         currentInstrumentIsBass = false; // default to Guitar
-        currentMutingEnabled = false;    // default muting disabled
-        saveNVRAM();
+        currentMutingEnabled = false;    // default muting disabled        currentSynthSound = 0; // default to Sine        saveNVRAM();
     }
 }
