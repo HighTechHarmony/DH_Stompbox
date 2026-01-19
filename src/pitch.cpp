@@ -1,5 +1,6 @@
 #include "pitch.h"
 #include "NVRAM.h"
+#include "audio.h"
 
 // Pitch detection object
 AudioAnalyzeNoteFrequency noteDetect;
@@ -12,19 +13,31 @@ static float sampledFrequency = 0.0f; // frequency sampled while FS1 held
 static float freqBuf[3] = {0, 0, 0};  // median filter buffer
 static int freqBufIdx = 0;
 
+// add near top of file (file-scope)
+AudioConnection *patchPitchPtr = nullptr;
+
 void setupPitchDetection()
 {
     // Initialize pitch detector with threshold
     // threshold: 0.0 = very sensitive, 1.0 = very picky (0.10 is good for general use)
     noteDetect.begin(0.10);
     Serial.println("Pitch detector initialized with threshold 0.10");
+
+    // create the connection at runtime so initialization order is safe
+    if (!patchPitchPtr)
+    {
+        // audioInput is declared in audio.h as extern; include audio.h if needed
+        patchPitchPtr = new AudioConnection(audioInput, 0, noteDetect, 0);
+        Serial.println("patchPitch connection created");
+    }
 }
 
-void updatePitchDetection(float &frequency, float &probability, const char *&noteName)
+void updatePitchDetection(float &frequency, float &probability, const char *&noteName, bool currentInstrumentIsBass)
 {
     static unsigned long lastDebugMs = 0;
     static int availableCount = 0;
     static int notAvailableCount = 0;
+    float lowMedianFreq = 50.0f;
 
     frequency = 0.0;
     probability = 0.0;
@@ -73,7 +86,16 @@ void updatePitchDetection(float &frequency, float &probability, const char *&not
 
         // Use probability as a smoothing weight (rather than gating on a threshold).
         // Normalize the new median into the same octave range as `sampledFrequency`
-        if (medianFreq > 50.0 && medianFreq < 2000.0)
+        if (currentInstrumentIsBass)
+        {
+            lowMedianFreq = 25.0f;
+        }
+        else
+        {
+            lowMedianFreq = 50.0f;
+        }
+
+        if (medianFreq > lowMedianFreq && medianFreq < 2000.0)
         {
             float newNorm = medianFreq;
             if (newNorm < 200.0f)
@@ -113,3 +135,5 @@ void updatePitchDetection(float &frequency, float &probability, const char *&not
         notAvailableCount++;
     }
 }
+
+// optionally free in a cleanup routine (not required)

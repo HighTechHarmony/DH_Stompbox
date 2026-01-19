@@ -41,6 +41,8 @@ extern const int octaveOptions[];
 extern const char *octaveMenuNames[];
 extern const int OCTAVE_MENU_COUNT;
 
+extern bool currentInstrumentIsBass;
+
 void handleMenuEncoder(int delta);
 void handleMenuButton();
 

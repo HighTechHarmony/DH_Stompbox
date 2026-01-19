@@ -132,7 +132,7 @@ void loop()
     float frequency = 0.0;
     float probability = 0.0;
     const char *noteName = "---";
-    updatePitchDetection(frequency, probability, noteName);
+    updatePitchDetection(frequency, probability, noteName, currentInstrumentIsBass);
 
     // Update chord in real-time while sampling (only when FS1 is held)
     if (fs1 && lastDetectedFrequency > 0.0f)

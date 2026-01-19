@@ -11,6 +11,6 @@ extern AudioAnalyzeNoteFrequency noteDetect;
 extern float lastDetectedFrequency;
 
 void setupPitchDetection();
-void updatePitchDetection(float &frequency, float &probability, const char *&noteName);
+void updatePitchDetection(float &frequency, float &probability, const char *&noteName, bool currentInstrumentIsBass);
 
 #endif // PITCH_H

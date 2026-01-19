@@ -263,7 +263,7 @@ void updateChordFade()
 void setupAudio()
 {
     // Allocate audio memory
-    AudioMemory(64);
+    AudioMemory(128);
     Serial.println("Audio memory allocated");
 
     // Initialize audio shield FIRST - only call enable() ONCE
@@ -274,7 +274,7 @@ void setupAudio()
 
         // Configure audio input - use lineIn for external audio sources
         audioShield.inputSelect(AUDIO_INPUT_LINEIN);
-        audioShield.lineInLevel(15); // 0-15, where 5 is 1.33Vp-p, 10 is 0.63Vp-p
+        audioShield.lineInLevel(10); // 0-15, where 5 is 1.33Vp-p, 10 is 0.63Vp-p
         Serial.println("Audio input configured: LINE IN, level 10");
     }
     else
