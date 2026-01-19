@@ -32,6 +32,11 @@ AudioMixer4 wetDryRight;    // mix dry (mixerRight) + wet (reverb R)
 AudioMixer4 synthOnlyLeft;  // mix synth voices for left reverb input
 AudioMixer4 synthOnlyRight; // mix synth voices for right reverb input
 
+// Sub-mixers to combine multiple oscillators per voice before main mixer
+AudioMixer4 voiceMix1; // combines all root voice oscillators
+AudioMixer4 voiceMix2; // combines all third voice oscillators
+AudioMixer4 voiceMix3; // combines all fifth voice oscillators
+
 // Audio shield control
 AudioControlSGTL5000 audioShield;
 bool audioShieldEnabled = false;
@@ -51,62 +56,60 @@ unsigned long chordFadeDurationMs = 1500; // ramp down time (ms)
 float chordFadeStartAmp = 0.0f;
 float beepAmp = 0.5f;
 
+// Organ vibrato state (deep vibrato for organ sound)
+bool organVibratoEnabled = true;
+float organVibratoRate = 6.0f;    // Hz
+float organVibratoDepth = 0.015f; // fractional depth (±1.5%)
+
+// Detune ratios used by organ voices
+float organDetune1 = 1.002f; // +~3.5 cents
+float organDetune2 = 0.998f; // -~3.5 cents
+
+// Base frequencies for vibrato application (set when organ is initialized/updated)
+float organBaseRootFreq = 440.0f;
+float organBaseThirdFreq = 440.0f;
+float organBaseFifthFreq = 440.0f;
+
 // Audio connections
 AudioConnection patchInL(audioInput, 0, mixerLeft, 0);  // left input → mixer L ch0
 AudioConnection patchInR(audioInput, 1, mixerRight, 0); // right input → mixer R ch0
 AudioConnection patchPitch(audioInput, 0, noteDetect, 0);
 AudioConnection patchPeak(audioInput, 0, peak1, 0);
-AudioConnection patchSynthL(myEffect, 0, mixerLeft, 1);    // synth root → mixer L ch1
-AudioConnection patchSynthR(myEffect, 0, mixerRight, 1);   // synth root → mixer R ch1
-AudioConnection patchSynth2L(myEffect2, 0, mixerLeft, 2);  // synth 3rd → mixer L ch2
-AudioConnection patchSynth2R(myEffect2, 0, mixerRight, 2); // synth 3rd → mixer R ch2
-AudioConnection patchSynth3L(myEffect3, 0, mixerLeft, 3);  // synth 5th → mixer L ch3
-AudioConnection patchSynth3R(myEffect3, 0, mixerRight, 3); // synth 5th → mixer R ch3
-// Organ sound connections (additional detuned oscillators share same mixer channels)
-AudioConnection patchOrg2L(myEffectOrg2, 0, mixerLeft, 1);
-AudioConnection patchOrg2R(myEffectOrg2, 0, mixerRight, 1);
-AudioConnection patchOrg3L(myEffectOrg3, 0, mixerLeft, 1);
-AudioConnection patchOrg3R(myEffectOrg3, 0, mixerRight, 1);
-AudioConnection patch2Org2L(myEffect2Org2, 0, mixerLeft, 2);
-AudioConnection patch2Org2R(myEffect2Org2, 0, mixerRight, 2);
-AudioConnection patch2Org3L(myEffect2Org3, 0, mixerLeft, 2);
-AudioConnection patch2Org3R(myEffect2Org3, 0, mixerRight, 2);
-AudioConnection patch3Org2L(myEffect3Org2, 0, mixerLeft, 3);
-AudioConnection patch3Org2R(myEffect3Org2, 0, mixerRight, 3);
-AudioConnection patch3Org3L(myEffect3Org3, 0, mixerLeft, 3);
-AudioConnection patch3Org3R(myEffect3Org3, 0, mixerRight, 3);
-AudioConnection patchSynthOnly1L(myEffect, 0, synthOnlyLeft, 0);
-AudioConnection patchSynthOnly2L(myEffect2, 0, synthOnlyLeft, 1);
-AudioConnection patchSynthOnly3L(myEffect3, 0, synthOnlyLeft, 2);
-AudioConnection patchSynthOnly1R(myEffect, 0, synthOnlyRight, 0);
-AudioConnection patchSynthOnly2R(myEffect2, 0, synthOnlyRight, 1);
-AudioConnection patchSynthOnly3R(myEffect3, 0, synthOnlyRight, 2);
-// Organ synth-only mixer connections
-AudioConnection patchSynthOnlyOrg2L(myEffectOrg2, 0, synthOnlyLeft, 0);
-AudioConnection patchSynthOnlyOrg3L(myEffectOrg3, 0, synthOnlyLeft, 0);
-AudioConnection patchSynthOnly2Org2L(myEffect2Org2, 0, synthOnlyLeft, 1);
-AudioConnection patchSynthOnly2Org3L(myEffect2Org3, 0, synthOnlyLeft, 1);
-AudioConnection patchSynthOnly3Org2L(myEffect3Org2, 0, synthOnlyLeft, 2);
-AudioConnection patchSynthOnly3Org3L(myEffect3Org3, 0, synthOnlyLeft, 2);
-AudioConnection patchSynthOnlyOrg2R(myEffectOrg2, 0, synthOnlyRight, 0);
-AudioConnection patchSynthOnlyOrg3R(myEffectOrg3, 0, synthOnlyRight, 0);
-AudioConnection patchSynthOnly2Org2R(myEffect2Org2, 0, synthOnlyRight, 1);
-AudioConnection patchSynthOnly2Org3R(myEffect2Org3, 0, synthOnlyRight, 1);
-AudioConnection patchSynthOnly3Org2R(myEffect3Org2, 0, synthOnlyRight, 2);
-AudioConnection patchSynthOnly3Org3R(myEffect3Org3, 0, synthOnlyRight, 2);
-// Rhodes and Strings connections (share same mixer channels as primary oscillators)
-AudioConnection patchRhodes2L(myEffectRhodes2, 0, mixerLeft, 1);
-AudioConnection patchRhodes2R(myEffectRhodes2, 0, mixerRight, 1);
-AudioConnection patch2Rhodes2L(myEffect2Rhodes2, 0, mixerLeft, 2);
-AudioConnection patch2Rhodes2R(myEffect2Rhodes2, 0, mixerRight, 2);
-AudioConnection patch3Rhodes2L(myEffect3Rhodes2, 0, mixerLeft, 3);
-AudioConnection patch3Rhodes2R(myEffect3Rhodes2, 0, mixerRight, 3);
-AudioConnection patchSynthOnlyRhodes2L(myEffectRhodes2, 0, synthOnlyLeft, 0);
-AudioConnection patchSynthOnly2Rhodes2L(myEffect2Rhodes2, 0, synthOnlyLeft, 1);
-AudioConnection patchSynthOnly3Rhodes2L(myEffect3Rhodes2, 0, synthOnlyLeft, 2);
-AudioConnection patchSynthOnlyRhodes2R(myEffectRhodes2, 0, synthOnlyRight, 0);
-AudioConnection patchSynthOnly2Rhodes2R(myEffect2Rhodes2, 0, synthOnlyRight, 1);
-AudioConnection patchSynthOnly3Rhodes2R(myEffect3Rhodes2, 0, synthOnlyRight, 2);
+
+// Connect all oscillators to voice sub-mixers first
+// Voice 1 (root) - all root oscillators to voiceMix1
+AudioConnection patchVoice1a(myEffect, 0, voiceMix1, 0);
+AudioConnection patchVoice1b(myEffectOrg2, 0, voiceMix1, 1);
+AudioConnection patchVoice1c(myEffectOrg3, 0, voiceMix1, 2);
+AudioConnection patchVoice1d(myEffectRhodes2, 0, voiceMix1, 3);
+// Voice 2 (third) - all third oscillators to voiceMix2
+AudioConnection patchVoice2a(myEffect2, 0, voiceMix2, 0);
+AudioConnection patchVoice2b(myEffect2Org2, 0, voiceMix2, 1);
+AudioConnection patchVoice2c(myEffect2Org3, 0, voiceMix2, 2);
+AudioConnection patchVoice2d(myEffect2Rhodes2, 0, voiceMix2, 3);
+// Voice 3 (fifth) - all fifth oscillators to voiceMix3
+AudioConnection patchVoice3a(myEffect3, 0, voiceMix3, 0);
+AudioConnection patchVoice3b(myEffect3Org2, 0, voiceMix3, 1);
+AudioConnection patchVoice3c(myEffect3Org3, 0, voiceMix3, 2);
+AudioConnection patchVoice3d(myEffect3Rhodes2, 0, voiceMix3, 3);
+
+// Connect voice mixers to main output mixers
+AudioConnection patchVoice1ToL(voiceMix1, 0, mixerLeft, 1);
+AudioConnection patchVoice1ToR(voiceMix1, 0, mixerRight, 1);
+AudioConnection patchVoice2ToL(voiceMix2, 0, mixerLeft, 2);
+AudioConnection patchVoice2ToR(voiceMix2, 0, mixerRight, 2);
+AudioConnection patchVoice3ToL(voiceMix3, 0, mixerLeft, 3);
+AudioConnection patchVoice3ToR(voiceMix3, 0, mixerRight, 3);
+
+// Connect voice mixers to synth-only mixers (for reverb)
+AudioConnection patchVoice1ToSynthL(voiceMix1, 0, synthOnlyLeft, 0);
+AudioConnection patchVoice1ToSynthR(voiceMix1, 0, synthOnlyRight, 0);
+AudioConnection patchVoice2ToSynthL(voiceMix2, 0, synthOnlyLeft, 1);
+AudioConnection patchVoice2ToSynthR(voiceMix2, 0, synthOnlyRight, 1);
+AudioConnection patchVoice3ToSynthL(voiceMix3, 0, synthOnlyLeft, 2);
+AudioConnection patchVoice3ToSynthR(voiceMix3, 0, synthOnlyRight, 2);
+
+// Reverb and output
 AudioConnection patchReverbInL(synthOnlyLeft, 0, reverb, 0);
 AudioConnection patchReverbInR(synthOnlyRight, 0, reverb, 1);
 AudioConnection patchDryL(mixerLeft, 0, wetDryLeft, 0);
@@ -192,7 +195,7 @@ void initSineSound(float tonic, float third, float fifth, float octaveMul, float
     // Original sine wave sound - single oscillator per voice
     stopAllOscillators();
 
-    // Set waveform type to sine
+    // Ensure waveform type is sine (in case it was changed to sawtooth)
     myEffect.begin(WAVEFORM_SINE);
     myEffect2.begin(WAVEFORM_SINE);
     myEffect3.begin(WAVEFORM_SINE);
@@ -222,41 +225,41 @@ void initOrganSound(float tonic, float third, float fifth, float octaveMul, floa
     myEffect3Org2.begin(WAVEFORM_SINE);
     myEffect3Org3.begin(WAVEFORM_SINE);
 
-    float detune1 = 1.002f;            // +3.5 cents
-    float detune2 = 0.998f;            // -3.5 cents
     float ampPerOsc = perVoice / 3.0f; // divide amplitude across 3 oscillators
 
     // Root voice (3 oscillators)
     myEffect.frequency(tonic * octaveMul);
     myEffect.amplitude(ampPerOsc);
-    myEffectOrg2.frequency(tonic * octaveMul * detune1);
+    myEffectOrg2.frequency(tonic * octaveMul * organDetune1);
     myEffectOrg2.amplitude(ampPerOsc);
-    myEffectOrg3.frequency(tonic * octaveMul * detune2);
+    myEffectOrg3.frequency(tonic * octaveMul * organDetune2);
     myEffectOrg3.amplitude(ampPerOsc);
 
     // Third voice (3 oscillators)
     myEffect2.frequency(tonic * third * octaveMul);
     myEffect2.amplitude(ampPerOsc);
-    myEffect2Org2.frequency(tonic * third * octaveMul * detune1);
+    myEffect2Org2.frequency(tonic * third * octaveMul * organDetune1);
     myEffect2Org2.amplitude(ampPerOsc);
-    myEffect2Org3.frequency(tonic * third * octaveMul * detune2);
+    myEffect2Org3.frequency(tonic * third * octaveMul * organDetune2);
     myEffect2Org3.amplitude(ampPerOsc);
 
     // Fifth voice (3 oscillators)
     myEffect3.frequency(tonic * fifth * octaveMul);
     myEffect3.amplitude(ampPerOsc);
-    myEffect3Org2.frequency(tonic * fifth * octaveMul * detune1);
-    // Set all oscillators to sine waveform
-    myEffect.begin(WAVEFORM_SINE);
-    myEffect2.begin(WAVEFORM_SINE);
-    myEffect3.begin(WAVEFORM_SINE);
-    myEffectRhodes2.begin(WAVEFORM_SINE);
-    myEffect2Rhodes2.begin(WAVEFORM_SINE);
-    myEffect3Rhodes2.begin(WAVEFORM_SINE);
-
+    myEffect3Org2.frequency(tonic * fifth * octaveMul * organDetune1);
     myEffect3Org2.amplitude(ampPerOsc);
-    myEffect3Org3.frequency(tonic * fifth * octaveMul * detune2);
+    myEffect3Org3.frequency(tonic * fifth * octaveMul * organDetune2);
     myEffect3Org3.amplitude(ampPerOsc);
+
+    // store base freqs for vibrato
+    organBaseRootFreq = tonic * octaveMul;
+    organBaseThirdFreq = tonic * third * octaveMul;
+    organBaseFifthFreq = tonic * fifth * octaveMul;
+
+    Serial.print("Organ sound: root=");
+    Serial.print(organBaseRootFreq);
+    Serial.print("Hz, ampPerOsc=");
+    Serial.println(ampPerOsc);
 }
 
 void initRhodesSound(float tonic, float third, float fifth, float octaveMul, float perVoice)
@@ -264,6 +267,14 @@ void initRhodesSound(float tonic, float third, float fifth, float octaveMul, flo
     // Rhodes sound - 2 oscillators per voice with bell-like character
     // Primary sine + slightly detuned companion with lower amplitude
     stopAllOscillators();
+
+    // Set all oscillators to sine waveform
+    myEffect.begin(WAVEFORM_SINE);
+    myEffect2.begin(WAVEFORM_SINE);
+    myEffect3.begin(WAVEFORM_SINE);
+    myEffectRhodes2.begin(WAVEFORM_SINE);
+    myEffect2Rhodes2.begin(WAVEFORM_SINE);
+    myEffect3Rhodes2.begin(WAVEFORM_SINE);
 
     float detune = 1.0015f;                // +2.6 cents - subtle bell-like chorus
     float mainAmp = perVoice * 0.65f;      // 65% primary
@@ -286,6 +297,13 @@ void initRhodesSound(float tonic, float third, float fifth, float octaveMul, flo
     myEffect3.amplitude(mainAmp);
     myEffect3Rhodes2.frequency(tonic * fifth * octaveMul * detune);
     myEffect3Rhodes2.amplitude(companionAmp);
+
+    Serial.print("Rhodes sound: root=");
+    Serial.print(tonic * octaveMul);
+    Serial.print("Hz, main=");
+    Serial.print(mainAmp);
+    Serial.print(", companion=");
+    Serial.println(companionAmp);
 }
 
 void initStringsSound(float tonic, float third, float fifth, float octaveMul, float perVoice)
@@ -389,20 +407,22 @@ void updateChordTonic(float tonicFreq, int keyNote, bool isMajor)
     // Update frequencies based on current sound
     if (currentSynthSound == 1) // Organ
     {
-        float detune1 = 1.002f;
-        float detune2 = 0.998f;
+        // update base frequencies (vibrato will modulate these)
+        organBaseRootFreq = tonicFreq * octaveMul;
+        organBaseThirdFreq = tonicFreq * third * octaveMul;
+        organBaseFifthFreq = tonicFreq * fifth * octaveMul;
 
-        myEffect.frequency(tonicFreq * octaveMul);
-        myEffectOrg2.frequency(tonicFreq * octaveMul * detune1);
-        myEffectOrg3.frequency(tonicFreq * octaveMul * detune2);
+        myEffect.frequency(organBaseRootFreq);
+        myEffectOrg2.frequency(organBaseRootFreq * organDetune1);
+        myEffectOrg3.frequency(organBaseRootFreq * organDetune2);
 
-        myEffect2.frequency(tonicFreq * third * octaveMul);
-        myEffect2Org2.frequency(tonicFreq * third * octaveMul * detune1);
-        myEffect2Org3.frequency(tonicFreq * third * octaveMul * detune2);
+        myEffect2.frequency(organBaseThirdFreq);
+        myEffect2Org2.frequency(organBaseThirdFreq * organDetune1);
+        myEffect2Org3.frequency(organBaseThirdFreq * organDetune2);
 
-        myEffect3.frequency(tonicFreq * fifth * octaveMul);
-        myEffect3Org2.frequency(tonicFreq * fifth * octaveMul * detune1);
-        myEffect3Org3.frequency(tonicFreq * fifth * octaveMul * detune2);
+        myEffect3.frequency(organBaseFifthFreq);
+        myEffect3Org2.frequency(organBaseFifthFreq * organDetune1);
+        myEffect3Org3.frequency(organBaseFifthFreq * organDetune2);
     }
     else if (currentSynthSound == 2) // Rhodes
     {
@@ -438,6 +458,32 @@ void updateChordTonic(float tonicFreq, int keyNote, bool isMajor)
     }
 
     Serial.println(">>> CHORD UPDATE tonic " + String(tonicFreq) + "Hz");
+}
+
+// Periodic vibrato update: called from main loop
+void updateVibrato()
+{
+    // Only apply vibrato when organ is selected, chord is active, and vibrato enabled
+    if (!organVibratoEnabled || currentSynthSound != 1 || !chordActive || chordFading)
+        return;
+
+    // time in seconds
+    float t = (float)micros() / 1000000.0f;
+    float lfo = sinf(TWO_PI * organVibratoRate * t);
+    float mult = 1.0f + lfo * organVibratoDepth;
+
+    // Apply vibrato to each voice (root, third, fifth) and their detuned companions
+    myEffect.frequency(organBaseRootFreq * mult);
+    myEffectOrg2.frequency(organBaseRootFreq * mult * organDetune1);
+    myEffectOrg3.frequency(organBaseRootFreq * mult * organDetune2);
+
+    myEffect2.frequency(organBaseThirdFreq * mult);
+    myEffect2Org2.frequency(organBaseThirdFreq * mult * organDetune1);
+    myEffect2Org3.frequency(organBaseThirdFreq * mult * organDetune2);
+
+    myEffect3.frequency(organBaseFifthFreq * mult);
+    myEffect3Org2.frequency(organBaseFifthFreq * mult * organDetune1);
+    myEffect3Org3.frequency(organBaseFifthFreq * mult * organDetune2);
 }
 
 void stopChord()
@@ -706,6 +752,24 @@ void setupAudio()
     synthOnlyRight.gain(0, 1.0f);
     synthOnlyRight.gain(1, 1.0f);
     synthOnlyRight.gain(2, 1.0f);
+
+    // Configure voice sub-mixers (all gains at 1.0 to pass signals through)
+    voiceMix1.gain(0, 1.0f);
+    voiceMix1.gain(1, 1.0f);
+    voiceMix1.gain(2, 1.0f);
+    voiceMix1.gain(3, 1.0f);
+
+    voiceMix2.gain(0, 1.0f);
+    voiceMix2.gain(1, 1.0f);
+    voiceMix2.gain(2, 1.0f);
+    voiceMix2.gain(3, 1.0f);
+
+    voiceMix3.gain(0, 1.0f);
+    voiceMix3.gain(1, 1.0f);
+    voiceMix3.gain(2, 1.0f);
+    voiceMix3.gain(3, 1.0f);
+
+    Serial.println("Voice sub-mixers configured");
 
     // Startup beep
     Serial.println("Playing startup beep 100ms @ 0.7");

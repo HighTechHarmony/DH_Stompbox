@@ -29,6 +29,10 @@ extern AudioMixer4 wetDryLeft;
 extern AudioMixer4 wetDryRight;
 extern AudioMixer4 synthOnlyLeft;
 extern AudioMixer4 synthOnlyRight;
+// Sub-mixers to combine multiple oscillators per voice
+extern AudioMixer4 voiceMix1; // combines all root voice oscillators
+extern AudioMixer4 voiceMix2; // combines all third voice oscillators
+extern AudioMixer4 voiceMix3; // combines all fifth voice oscillators
 extern AudioControlSGTL5000 audioShield;
 
 // Audio state
@@ -42,6 +46,10 @@ extern unsigned long chordFadeStartMs;
 extern unsigned long chordFadeDurationMs;
 extern float chordFadeStartAmp;
 extern float beepAmp;
+// Organ vibrato control
+extern bool organVibratoEnabled;
+extern float organVibratoRate;  // Hz
+extern float organVibratoDepth; // fractional depth (e.g., 0.015 = ±1.5%)
 
 // Audio functions
 void setupAudio();
@@ -57,5 +65,6 @@ void updateChordTonic(float tonicFreq, int keyNote, bool isMajor);
 void stopChord();
 void updateChordVolume(float potNorm);
 void updateChordFade();
+void updateVibrato();
 
 #endif // AUDIO_H

@@ -52,6 +52,9 @@ void loop()
     // Handle non-blocking fade-out
     updateChordFade();
 
+    // Apply any synth vibrato (e.g., organ) each loop
+    updateVibrato();
+
     // Return to home screen after fade completes
     if (!chordFading && currentScreen == SCREEN_FADE)
     {
