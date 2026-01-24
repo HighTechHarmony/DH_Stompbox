@@ -22,6 +22,12 @@ bool fsVolumeExitArmed = false;     // require release before allowing simultane
 unsigned long fsVolumePreventReenterUntilMs = 0; // prevent immediate re-entry after exit
 unsigned long fsIgnoreInputsUntilMs = 0; // settling time after FS volume mode changes
 
+// Tap tempo state
+bool tapTempoActive = false;
+unsigned long lastFs2TapMs = 0;
+unsigned long lastTapTempoActivityMs = 0;
+float tapTempoAbortedVolume = 0.0f; // Store volume if fadeout was aborted
+
 void setup()
 {
     Serial.begin(9600);
@@ -241,24 +247,93 @@ void loop()
         }
     }
 
-    // FS2 press edge: stop chord immediately on initial press (unless in FS volume control mode or within settling time)
+    // FS2 press edge: handle tap tempo or chord stop
     if (fs2 && !prevFs2 && !fsVolumeControlActive && now >= fsIgnoreInputsUntilMs)
     {
-        stopChord();
-        // show fade progress screen only if a fade was actually started
-        if (chordFading)
+        // Check if we're in tap tempo mode
+        if (tapTempoActive)
         {
-            currentScreen = SCREEN_FADE;
+            // Calculate tempo from tap interval
+            unsigned long tapInterval = now - lastFs2TapMs;
+            if (tapInterval > 50) // Debounce: ignore taps less than 50ms apart
+            {
+                // Convert interval to BPM: BPM = 60000 / interval_ms
+                float newBPM = 60000.0f / (float)tapInterval;
+                
+                // Clamp to 40-200 BPM range
+                if (newBPM < 40.0f)
+                    newBPM = 40.0f;
+                if (newBPM > 200.0f)
+                    newBPM = 200.0f;
+                
+                globalTempoBPM = newBPM;
+                
+                // Update arp step duration: eighth note = (60000 / BPM) / 2
+                arpStepDurationMs = (unsigned long)(30000.0f / globalTempoBPM);
+                
+                lastTapTempoActivityMs = now;
+                Serial.print("Tap tempo: ");
+                Serial.print(globalTempoBPM);
+                Serial.println(" BPM");
+            }
+            lastFs2TapMs = now;
         }
         else
         {
-            // No fade to show; return to home immediately
-            currentScreen = SCREEN_HOME;
+            // Check for double-tap to enter tap tempo mode
+            if ((now - lastFs2TapMs) <= 1000) // Double-tap within 1 second
+            {
+                // Enter tap tempo mode
+                tapTempoActive = true;
+                lastTapTempoActivityMs = now;
+                lastFs2TapMs = now;
+                currentScreen = SCREEN_TAP_TEMPO;
+                
+                // If fadeout was just started, abort it and restore volume
+                if (chordFading)
+                {
+                    chordFading = false;
+                    tapTempoAbortedVolume = chordFadeStartAmp;
+                    beepAmp = tapTempoAbortedVolume;
+                    // Restore oscillator amplitudes
+                    updateChordVolume(tapTempoAbortedVolume);
+                    Serial.println("Tap tempo mode activated - fadeout aborted");
+                }
+                else
+                {
+                    Serial.println("Tap tempo mode activated");
+                }
+            }
+            else
+            {
+                // Normal FS2 behavior: stop chord
+                stopChord();
+                // show fade progress screen only if a fade was actually started
+                if (chordFading)
+                {
+                    currentScreen = SCREEN_FADE;
+                }
+                else
+                {
+                    // No fade to show; return to home immediately
+                    currentScreen = SCREEN_HOME;
+                }
+            }
+            
+            lastFs2TapMs = now;
         }
     }
 
-    // FS1 press edge: if chord was suppressed (stopped by FS2), re-enable it (unless in FS volume control mode or within settling time)
-    if (fs1_raw && !prevFs1 && !fsVolumeControlActive && now >= fsIgnoreInputsUntilMs)
+    // Tap tempo timeout: exit after 3 seconds of inactivity
+    if (tapTempoActive && (now - lastTapTempoActivityMs) > 3000)
+    {
+        tapTempoActive = false;
+        currentScreen = SCREEN_HOME;
+        Serial.println("Tap tempo mode timeout");
+    }
+
+    // FS1 press edge: if chord was suppressed (stopped by FS2), re-enable it (unless in FS volume control mode, within settling time, or in tap tempo mode)
+    if (fs1_raw && !prevFs1 && !fsVolumeControlActive && now >= fsIgnoreInputsUntilMs && !tapTempoActive)
     {
         // Reset pitch detection to clear stale frequency data
         resetPitchDetection();
@@ -276,8 +351,8 @@ void loop()
     const char *noteName = "---";
     updatePitchDetection(frequency, probability, noteName, currentInstrumentIsBass);
 
-    // Update chord in real-time while sampling (only when FS1 is held and NOT in FS volume control mode)
-    if (fs1 && lastDetectedFrequency > 0.0f && !fsVolumeControlActive)
+    // Update chord in real-time while sampling (only when FS1 is held and NOT in FS volume control mode or tap tempo mode)
+    if (fs1 && lastDetectedFrequency > 0.0f && !fsVolumeControlActive && !tapTempoActive)
     {
         updateChordTonic(lastDetectedFrequency, currentKey, currentModeIsMajor);
     }
@@ -377,6 +452,10 @@ void loop()
     else if (currentScreen == SCREEN_VOLUME_CONTROL)
     {
         renderVolumeControlScreen(fsControlledVolume);
+    }
+    else if (currentScreen == SCREEN_TAP_TEMPO)
+    {
+        renderTapTempoScreen(globalTempoBPM);
     }
 
     // Track state for edge detection next iteration

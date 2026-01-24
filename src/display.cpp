@@ -568,3 +568,35 @@ void renderVolumeControlScreen(float volumeLevel)
 
     display.display();
 }
+
+void renderTapTempoScreen(float bpm)
+{
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    
+    // Display title at the top
+    display.setCursor(0, 0);
+    display.setTextSize(1);
+    display.println("TAP TEMPO MODE");
+    
+    // Display current BPM in large text
+    display.setTextSize(3);
+    int bpmInt = (int)(bpm + 0.5f); // Round to nearest integer
+    char bpmStr[8];
+    sprintf(bpmStr, "%d", bpmInt);
+    
+    // Center the BPM display
+    int textWidth = strlen(bpmStr) * 18; // Approximate width for size 3 text
+    int xPos = (SCREEN_WIDTH - textWidth) / 2;
+    if (xPos < 0) xPos = 0;
+    
+    display.setCursor(xPos, 20);
+    display.print(bpmStr);
+    
+    // Display "BPM" label below
+    display.setTextSize(1);
+    display.setCursor(52, 50);
+    display.print("BPM");
+    
+    display.display();
+}

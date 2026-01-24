@@ -80,7 +80,8 @@ float rhodesDecayStartAmp = 0.0f;
 int currentArpMode = 1; // 0=Arp, 1=Poly (default Poly)
 int arpCurrentStep = 0; // 0=root, 1=third, 2=fifth
 unsigned long arpLastStepMs = 0;
-const unsigned long arpStepDurationMs = 125; // 125ms = eighth note at 120 BPM
+unsigned long arpStepDurationMs = 125; // 125ms = eighth note at 120 BPM (will be updated by tempo)
+float globalTempoBPM = 120.0f; // Global tempo
 
 // Audio connections
 AudioConnection patchInL(audioInput, 0, mixerLeft, 0);  // left input → mixer L ch0

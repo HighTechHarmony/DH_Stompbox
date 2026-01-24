@@ -59,7 +59,8 @@ extern float rhodesDecayStartAmp;
 extern int currentArpMode; // 0=Arp, 1=Poly
 extern int arpCurrentStep; // 0=root, 1=third, 2=fifth
 extern unsigned long arpLastStepMs;
-extern const unsigned long arpStepDurationMs; // 125ms for eighth notes at 120 BPM
+extern unsigned long arpStepDurationMs; // 125ms for eighth notes at 120 BPM (updated by tempo)
+extern float globalTempoBPM; // Global tempo for arpeggiator
 
 // Audio functions
 void setupAudio();
