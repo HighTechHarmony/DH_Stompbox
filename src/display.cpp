@@ -484,3 +484,38 @@ void renderFadeScreen()
 
     display.display();
 }
+
+void renderVolumeControlScreen(float volumeLevel)
+{
+    display.clearDisplay();
+    display.setTextSize(1);
+
+    // Display title at the top
+    display.setCursor(0, 0);
+    display.setTextColor(SSD1306_WHITE);
+    display.println("FS VOLUME CONTROL");
+
+    // Display volume percentage
+    int volumePercent = (int)(volumeLevel * 100.0f);
+    display.setCursor(0, 12);
+    display.setTextSize(2);
+    display.print(volumePercent);
+    display.print("%");
+
+    // Draw volume bar graph (similar to fade screen but inverted logic)
+    // Bar fills from left to right based on volume level
+    int barY = 35;
+    int barHeight = 20;
+    int barWidth = (int)(volumeLevel * (float)SCREEN_WIDTH);
+    
+    // Draw outline
+    display.drawRect(0, barY, SCREEN_WIDTH, barHeight, SSD1306_WHITE);
+    
+    // Fill bar based on volume level
+    if (barWidth > 2)
+    {
+        display.fillRect(1, barY + 1, barWidth - 1, barHeight - 2, SSD1306_WHITE);
+    }
+
+    display.display();
+}

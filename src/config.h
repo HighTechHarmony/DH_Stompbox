@@ -14,6 +14,7 @@
 // Timing Constants
 #define FS1_MIN_ACTIVATION_MS 500 // Window of time after FS1 press that tracking is on
 #define SCREEN_TIMEOUT_MS 5000    // 5 seconds menu timeout
+#define FS_VOLUME_TIMEOUT_MS 5000 // 5 seconds FS volume control timeout
 
 // Pitch detection sensitivity (0.0 = most sensitive, 1.0 = least sensitive)
 // Increase this value to require more input volume/clarity before detection engages.

@@ -9,7 +9,8 @@ enum ScreenMode
 {
     SCREEN_HOME,
     SCREEN_MENU,
-    SCREEN_FADE
+    SCREEN_FADE,
+    SCREEN_VOLUME_CONTROL
 };
 
 extern Adafruit_SSD1306 display;
@@ -20,5 +21,6 @@ void setupDisplay();
 void renderHomeScreen(const char *noteName, float frequency);
 void renderMenuScreen();
 void renderFadeScreen();
+void renderVolumeControlScreen(float volumeLevel);
 
 #endif // DISPLAY_H

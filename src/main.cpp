@@ -11,6 +11,16 @@
 // Timing state
 unsigned long fs1ForcedUntilMs = 0;
 
+// Footswitch volume control state
+bool fsVolumeControlActive = false;
+float fsControlledVolume = 0.5f; // 0.0 to 1.0
+unsigned long lastFsVolumeActivityMs = 0;
+int lastPotRaw = -1; // Track pot changes to detect override
+bool fsVolumeJustActivated = false; // Skip first adjustment when entering mode
+bool fsVolumeExitArmed = false;     // require release before allowing simultaneous-press exit
+unsigned long fsVolumePreventReenterUntilMs = 0; // prevent immediate re-entry after exit
+unsigned long fsIgnoreInputsUntilMs = 0; // settling time after FS volume mode changes
+
 void setup()
 {
     Serial.begin(9600);
@@ -46,8 +56,27 @@ void loop()
     int potRaw = analogRead(POT_PIN);
     float potNorm = potRaw / 1023.0;
 
+    // Detect pot rotation to override FS volume control
+    if (lastPotRaw == -1)
+    {
+        lastPotRaw = potRaw; // Initialize on first loop
+    }
+    
+    // If pot has moved significantly while FS volume control is active, disable it
+    if (fsVolumeControlActive && abs(potRaw - lastPotRaw) > 10) // ~1% threshold
+    {
+        fsVolumeControlActive = false;
+        fsVolumeExitArmed = false;
+        currentScreen = SCREEN_HOME;
+        Serial.println("FS volume control overridden by pot");
+    }
+    lastPotRaw = potRaw;
+
+    // Determine effective volume based on control mode
+    float effectiveVolume = fsVolumeControlActive ? fsControlledVolume : potNorm;
+
     // Update chord volume in real-time
-    updateChordVolume(potNorm);
+    updateChordVolume(effectiveVolume);
 
     // Handle non-blocking fade-out
     updateChordFade();
@@ -67,7 +96,7 @@ void loop()
     // Restart chord if not active (ensure continuous playback)
     if (!chordActive && !chordSuppressed)
     {
-        startChord(potNorm, currentChordTonic, currentKey, currentModeIsMajor);
+        startChord(effectiveVolume, currentChordTonic, currentKey, currentModeIsMajor);
     }
 
     // Read inputs
@@ -75,8 +104,95 @@ void loop()
     bool fs1_raw = !digitalRead(FOOT1);
     bool fs2 = !digitalRead(FOOT2);
 
+    // If currently in FS volume control, require a full release before
+    // allowing a simultaneous FS1+FS2 press to exit the mode. This avoids
+    // immediately exiting right after activation while the switches are
+    // still held from the activation press.
+    if (fsVolumeControlActive)
+    {
+        // If both released, arm exit on next simultaneous press
+        if (!fs1_raw && !fs2)
+        {
+            fsVolumeExitArmed = true;
+        }
+
+        // If both pressed and we've seen a release since activation, exit
+        if (fs1_raw && fs2 && fsVolumeExitArmed)
+        {
+            fsVolumeControlActive = false;
+            fsVolumeExitArmed = false;
+            // Prevent immediate re-entry on the same held press
+            fsVolumePreventReenterUntilMs = now + 200; // 200ms cooldown
+            // Ignore all FS inputs for settling time to prevent accidental triggers
+            fsIgnoreInputsUntilMs = now + 250; // 250ms settling time
+            currentScreen = SCREEN_HOME;
+            Serial.println("FS volume control exited by simultaneous FS press (armed)");
+        }
+    }
+
+    // Detect both footswitches pressed simultaneously to enter FS volume control mode
+    if (fs1_raw && fs2 && !prevFs1 && !prevFs2 && now >= fsVolumePreventReenterUntilMs)
+    {
+        fsVolumeControlActive = true;
+        fsVolumeJustActivated = true; // Skip adjustment on activation
+        fsVolumeExitArmed = false; // require a release before allowing exit
+        fsControlledVolume = effectiveVolume; // Start with current volume
+        lastFsVolumeActivityMs = now;
+        // Ignore all FS inputs for settling time to prevent accidental triggers
+        fsIgnoreInputsUntilMs = now + 250; // 250ms settling time
+        currentScreen = SCREEN_VOLUME_CONTROL;
+        Serial.println("FS volume control mode activated");
+    }
+
+    // Handle FS volume control mode
+    if (fsVolumeControlActive)
+    {
+        // Check for timeout
+        if ((now - lastFsVolumeActivityMs) > FS_VOLUME_TIMEOUT_MS)
+        {
+            fsVolumeControlActive = false;
+            fsVolumeExitArmed = false;
+            currentScreen = SCREEN_HOME;
+            Serial.println("FS volume control timeout");
+        }
+        else
+        {
+            // Skip adjustments on the initial activation cycle
+            if (fsVolumeJustActivated)
+            {
+                fsVolumeJustActivated = false;
+            }
+            else
+            {
+                // Handle FS1 press (decrement volume)
+                if (fs1_raw && !prevFs1)
+                {
+                    fsControlledVolume -= 0.05f; // Decrement by 5%
+                    if (fsControlledVolume < 0.0f)
+                        fsControlledVolume = 0.0f;
+                    lastFsVolumeActivityMs = now;
+                    updateChordVolume(fsControlledVolume);
+                    Serial.print("FS volume decreased to: ");
+                    Serial.println(fsControlledVolume * 100.0f);
+                }
+                
+                // Handle FS2 press (increment volume)
+                if (fs2 && !prevFs2)
+                {
+                    fsControlledVolume += 0.05f; // Increment by 5%
+                    if (fsControlledVolume > 1.0f)
+                        fsControlledVolume = 1.0f;
+                    lastFsVolumeActivityMs = now;
+                    updateChordVolume(fsControlledVolume);
+                    Serial.print("FS volume increased to: ");
+                    Serial.println(fsControlledVolume * 100.0f);
+                }
+            }
+        }
+    }
+
     // On raw press-edge, ensure FS1 remains true for at least the minimum window
-    if (fs1_raw && !prevFs1)
+    if (fs1_raw && !prevFs1 && !fsVolumeControlActive)
     {
         fs1ForcedUntilMs = now + FS1_MIN_ACTIVATION_MS;
     }
@@ -109,8 +225,8 @@ void loop()
         }
     }
 
-    // FS2 press edge: stop chord immediately on initial press
-    if (fs2 && !prevFs2)
+    // FS2 press edge: stop chord immediately on initial press (unless in FS volume control mode or within settling time)
+    if (fs2 && !prevFs2 && !fsVolumeControlActive && now >= fsIgnoreInputsUntilMs)
     {
         stopChord();
         // show fade progress screen only if a fade was actually started
@@ -125,8 +241,8 @@ void loop()
         }
     }
 
-    // FS1 press edge: if chord was suppressed (stopped by FS2), re-enable it
-    if (fs1_raw && !prevFs1)
+    // FS1 press edge: if chord was suppressed (stopped by FS2), re-enable it (unless in FS volume control mode or within settling time)
+    if (fs1_raw && !prevFs1 && !fsVolumeControlActive && now >= fsIgnoreInputsUntilMs)
     {
         // Reset pitch detection to clear stale frequency data
         resetPitchDetection();
@@ -134,7 +250,7 @@ void loop()
         if (chordSuppressed)
         {
             // Start with tonic=0; chord will update once fresh pitch is detected
-            startChord(potNorm, 0.0f, currentKey, currentModeIsMajor);
+            startChord(effectiveVolume, 0.0f, currentKey, currentModeIsMajor);
         }
     }
 
@@ -241,6 +357,10 @@ void loop()
     else if (currentScreen == SCREEN_FADE)
     {
         renderFadeScreen();
+    }
+    else if (currentScreen == SCREEN_VOLUME_CONTROL)
+    {
+        renderVolumeControlScreen(fsControlledVolume);
     }
 
     // Track state for edge detection next iteration
