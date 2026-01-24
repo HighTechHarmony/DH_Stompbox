@@ -1,5 +1,6 @@
 #include "NVRAM.h"
 #include <EEPROM.h>
+#include "audio.h"
 
 // Define global variables declared as extern in NVRAM.h
 int currentKey = 0;                   // 0=C, 1=C#, 2=D, etc. (chromatic scale)
@@ -18,6 +19,7 @@ void saveNVRAM()
     EEPROM.write(NVRAM_BASSGUIT_ADDR, (uint8_t)(currentInstrumentIsBass ? 1 : 0));
     EEPROM.write(NVRAM_MUTING_ADDR, (uint8_t)(currentMutingEnabled ? 1 : 0));
     EEPROM.write(NVRAM_SYNTHSND_ADDR, (uint8_t)currentSynthSound);
+    EEPROM.write(NVRAM_ARP_ADDR, (uint8_t)currentArpMode);
     // store octave shifted by +2 to fit into unsigned byte (valid -1..2 -> 1..4)
     int8_t enc = currentOctaveShift + 2;
     if (enc < 0)
@@ -69,6 +71,13 @@ void loadNVRAM()
         Serial.print(" synthSound=");
         const char *soundNames[] = {"Sine", "Organ", "Rhodes", "Strings"};
         Serial.println(soundNames[currentSynthSound]);
+        // load arp mode (0 = Arp, 1 = Poly)
+        uint8_t ar = EEPROM.read(NVRAM_ARP_ADDR);
+        if (ar <= 1) // validate range
+            currentArpMode = ar;
+        Serial.print(" arpMode=");
+        const char *arpNames[] = {"Arp", "Poly"};
+        Serial.println(arpNames[currentArpMode]);
     }
     else
     {

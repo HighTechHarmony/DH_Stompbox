@@ -15,6 +15,8 @@
 #define NVRAM_MUTING_ADDR 5
 // Address for Synth Sound (0=Sine, 1=Organ, etc.)
 #define NVRAM_SYNTHSND_ADDR 6
+// Address for Arp Mode (0=Arp, 1=Poly)
+#define NVRAM_ARP_ADDR 7
 
 extern int currentKey;
 extern bool currentModeIsMajor;
@@ -22,6 +24,7 @@ extern int currentOctaveShift;
 extern bool currentInstrumentIsBass;
 extern bool currentMutingEnabled;
 extern int currentSynthSound; // 0=Sine, 1=Organ, etc.
+extern int currentArpMode; // 0=Arp, 1=Poly
 
 void saveNVRAM();
 void loadNVRAM();

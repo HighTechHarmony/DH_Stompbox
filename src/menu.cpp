@@ -10,6 +10,7 @@ int menuModeIndex = 0;     // 0=Major, 1=Minor
 int menuOctaveIndex = 1;   // index into octave options (default 0)
 int menuBassGuitIndex = 0; // 0=Bass, 1=Guitar
 int menuSynthSndIndex = 0; // 0=Sine, 1=Organ
+int menuArpIndex = 1;      // 0=Arp, 1=Poly (default Poly)
 
 // Viewport tracking for scrolling submenus
 int keyViewportStart = 0;
@@ -19,10 +20,11 @@ int topViewportStart = 0;
 int bassGuitViewportStart = 0;
 int mutingViewportStart = 0;
 int synthSndViewportStart = 0;
+int arpViewportStart = 0;
 
 // Menu display names
-const char *menuTopItems[] = {"MusicKey", "Maj/Min", "Octave", "Bass/Gtr", "Muting", "SynthSnd"};
-const int MENU_TOP_COUNT = 6;
+const char *menuTopItems[] = {"MusicKey", "Maj/Min", "Octave", "Bass/Gtr", "Muting", "SynthSnd", "Arp/Poly"};
+const int MENU_TOP_COUNT = 7;
 
 const char *keyMenuNames[] = {"A", "Bb", "B", "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab"};
 const int KEY_MENU_COUNT = 12;
@@ -48,6 +50,10 @@ int menuMutingIndex = 0; // 0=Disabled, 1=Enabled
 // Synth sound options
 const char *synthSndMenuNames[] = {"Sine", "Organ", "Rhodes", "Strings"};
 const int SYNTHSND_MENU_COUNT = 4;
+
+// Arpeggiator options
+const char *arpMenuNames[] = {"Arp", "Poly"};
+const int ARP_MENU_COUNT = 2;
 
 void handleMenuEncoder(int delta)
 {
@@ -107,6 +113,14 @@ void handleMenuEncoder(int delta)
         if (menuSynthSndIndex > SYNTHSND_MENU_COUNT)
             menuSynthSndIndex = SYNTHSND_MENU_COUNT; // allow Parent
     }
+    else if (currentMenuLevel == MENU_ARP_SELECT)
+    {
+        menuArpIndex += delta;
+        if (menuArpIndex < 0)
+            menuArpIndex = 0;
+        if (menuArpIndex > ARP_MENU_COUNT)
+            menuArpIndex = ARP_MENU_COUNT; // allow Parent
+    }
 }
 
 void handleMenuButton()
@@ -162,6 +176,12 @@ void handleMenuButton()
             currentMenuLevel = MENU_SYNTHSND_SELECT;
             // Initialize to current synth sound setting
             menuSynthSndIndex = currentSynthSound;
+        }
+        else if (menuTopIndex == 6) // Arp
+        {
+            currentMenuLevel = MENU_ARP_SELECT;
+            // Initialize to current arp mode (0=Arp, 1=Poly)
+            menuArpIndex = currentArpMode;
         }
     }
     else if (currentMenuLevel == MENU_KEY_SELECT)
@@ -251,6 +271,20 @@ void handleMenuButton()
         else
         {
             currentSynthSound = menuSynthSndIndex;
+            saveNVRAM();
+            currentMenuLevel = MENU_TOP;
+        }
+    }
+    else if (currentMenuLevel == MENU_ARP_SELECT)
+    {
+        // If Parent selected, return to top. Otherwise apply arp mode.
+        if (menuArpIndex == ARP_MENU_COUNT)
+        {
+            currentMenuLevel = MENU_TOP;
+        }
+        else
+        {
+            currentArpMode = menuArpIndex;
             saveNVRAM();
             currentMenuLevel = MENU_TOP;
         }

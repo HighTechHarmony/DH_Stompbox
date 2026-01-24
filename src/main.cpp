@@ -97,6 +97,9 @@ void loop()
     // Apply Rhodes decay if active
     updateRhodesDecay();
 
+    // Update arpeggiator if active
+    updateArpeggiator();
+
     // Return to home screen after fade completes
     if (!chordFading && currentScreen == SCREEN_FADE)
     {
@@ -180,7 +183,7 @@ void loop()
                 // Handle FS1 press (decrement volume)
                 if (fs1_raw && !prevFs1)
                 {
-                    fsControlledVolume -= 0.10f; // Decrement by 10%
+                    fsControlledVolume -= 0.15f; // Decrement by 15%
                     if (fsControlledVolume < 0.0f)
                         fsControlledVolume = 0.0f;
                     lastFsVolumeActivityMs = now;
@@ -192,7 +195,7 @@ void loop()
                 // Handle FS2 press (increment volume)
                 if (fs2 && !prevFs2)
                 {
-                    fsControlledVolume += 0.10f; // Increment by 10%
+                    fsControlledVolume += 0.15f; // Increment by 15%
                     if (fsControlledVolume > 1.0f)
                         fsControlledVolume = 1.0f;
                     lastFsVolumeActivityMs = now;

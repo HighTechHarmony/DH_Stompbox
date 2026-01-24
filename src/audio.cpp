@@ -76,6 +76,12 @@ unsigned long rhodesDecayStartMs = 0;
 unsigned long rhodesDecayDurationMs = 2000; // 2 seconds
 float rhodesDecayStartAmp = 0.0f;
 
+// Arpeggiator state (120 BPM eighth notes)
+int currentArpMode = 1; // 0=Arp, 1=Poly (default Poly)
+int arpCurrentStep = 0; // 0=root, 1=third, 2=fifth
+unsigned long arpLastStepMs = 0;
+const unsigned long arpStepDurationMs = 125; // 125ms = eighth note at 120 BPM
+
 // Audio connections
 AudioConnection patchInL(audioInput, 0, mixerLeft, 0);  // left input → mixer L ch0
 AudioConnection patchInR(audioInput, 1, mixerRight, 0); // right input → mixer R ch0
@@ -194,6 +200,21 @@ void stopAllOscillators()
     myEffectRhodes2.amplitude(0);
     myEffect2Rhodes2.amplitude(0);
     myEffect3Rhodes2.amplitude(0);
+    
+    // Restore mixer gains to normal when stopping (in case arp mode left them muted)
+    float synthGain = 0.8f;
+    mixerLeft.gain(1, synthGain);
+    mixerLeft.gain(2, synthGain);
+    mixerLeft.gain(3, synthGain);
+    mixerRight.gain(1, synthGain);
+    mixerRight.gain(2, synthGain);
+    mixerRight.gain(3, synthGain);
+    synthOnlyLeft.gain(0, 1.0f);
+    synthOnlyLeft.gain(1, 1.0f);
+    synthOnlyLeft.gain(2, 1.0f);
+    synthOnlyRight.gain(0, 1.0f);
+    synthOnlyRight.gain(1, 1.0f);
+    synthOnlyRight.gain(2, 1.0f);
 }
 
 void initSineSound(float tonic, float third, float fifth, float octaveMul, float perVoice)
@@ -394,6 +415,10 @@ void startChord(float potNorm, float tonicFreq, int keyNote, bool isMajor)
 
     beepAmp = potNorm;
     chordActive = true;
+    
+    // Reset arpeggiator state when starting chord
+    arpCurrentStep = 0;
+    arpLastStepMs = millis();
 }
 
 void updateChordTonic(float tonicFreq, int keyNote, bool isMajor)
@@ -839,4 +864,86 @@ void setupAudio()
     delay(100);
     myEffect.amplitude(0);
     Serial.println("Startup beep complete");
+}
+
+void updateArpeggiator()
+{
+    // Only run arpeggiator if chord is active, not fading, and mode is set to Arp (0)
+    if (!chordActive || chordFading || currentArpMode != 0)
+    {
+        // In Poly mode or when inactive, ensure all voices are on
+        if (chordActive && !chordFading && currentArpMode == 1)
+        {
+            // Poly mode - restore normal voice levels
+            float synthGain = 0.8f;
+            mixerLeft.gain(1, synthGain);
+            mixerLeft.gain(2, synthGain);
+            mixerLeft.gain(3, synthGain);
+            mixerRight.gain(1, synthGain);
+            mixerRight.gain(2, synthGain);
+            mixerRight.gain(3, synthGain);
+            synthOnlyLeft.gain(0, 1.0f);
+            synthOnlyLeft.gain(1, 1.0f);
+            synthOnlyLeft.gain(2, 1.0f);
+            synthOnlyRight.gain(0, 1.0f);
+            synthOnlyRight.gain(1, 1.0f);
+            synthOnlyRight.gain(2, 1.0f);
+        }
+        return;
+    }
+
+    unsigned long now = millis();
+    
+    // Check if it's time to advance to next step
+    if (now - arpLastStepMs >= arpStepDurationMs)
+    {
+        arpLastStepMs = now;
+        
+        // Mute all voices first
+        // For each synth sound, mute all three voice sub-mixers in the main mixer
+        mixerLeft.gain(1, 0.0f);  // mute root
+        mixerLeft.gain(2, 0.0f);  // mute third
+        mixerLeft.gain(3, 0.0f);  // mute fifth
+        mixerRight.gain(1, 0.0f);
+        mixerRight.gain(2, 0.0f);
+        mixerRight.gain(3, 0.0f);
+        
+        synthOnlyLeft.gain(0, 0.0f);  // mute root
+        synthOnlyLeft.gain(1, 0.0f);  // mute third
+        synthOnlyLeft.gain(2, 0.0f);  // mute fifth
+        synthOnlyRight.gain(0, 0.0f);
+        synthOnlyRight.gain(1, 0.0f);
+        synthOnlyRight.gain(2, 0.0f);
+        
+        // Unmute only the current step voice
+        float synthGain = 0.8f;
+        switch (arpCurrentStep)
+        {
+            case 0: // Root voice
+                mixerLeft.gain(1, synthGain);
+                mixerRight.gain(1, synthGain);
+                synthOnlyLeft.gain(0, 1.0f);
+                synthOnlyRight.gain(0, 1.0f);
+                break;
+            case 1: // Third voice
+                mixerLeft.gain(2, synthGain);
+                mixerRight.gain(2, synthGain);
+                synthOnlyLeft.gain(1, 1.0f);
+                synthOnlyRight.gain(1, 1.0f);
+                break;
+            case 2: // Fifth voice
+                mixerLeft.gain(3, synthGain);
+                mixerRight.gain(3, synthGain);
+                synthOnlyLeft.gain(2, 1.0f);
+                synthOnlyRight.gain(2, 1.0f);
+                break;
+        }
+        
+        // Advance to next step
+        arpCurrentStep++;
+        if (arpCurrentStep > 2)
+        {
+            arpCurrentStep = 0;
+        }
+    }
 }
