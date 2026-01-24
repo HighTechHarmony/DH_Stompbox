@@ -70,7 +70,11 @@ void loop()
         currentScreen = SCREEN_HOME;
         Serial.println("FS volume control overridden by pot");
     }
-    lastPotRaw = potRaw;
+    // If not in FS mode, track pot changes normally
+    if (!fsVolumeControlActive)
+    {
+        lastPotRaw = potRaw;
+    }
 
     // Determine effective volume based on control mode
     float effectiveVolume = fsVolumeControlActive ? fsControlledVolume : potNorm;
@@ -125,6 +129,8 @@ void loop()
             fsVolumePreventReenterUntilMs = now + 200; // 200ms cooldown
             // Ignore all FS inputs for settling time to prevent accidental triggers
             fsIgnoreInputsUntilMs = now + 250; // 250ms settling time
+            // Sync lastPotRaw to maintain current volume until pot is physically moved
+            lastPotRaw = (int)(fsControlledVolume * 1023.0f);
             currentScreen = SCREEN_HOME;
             Serial.println("FS volume control exited by simultaneous FS press (armed)");
         }
@@ -152,6 +158,8 @@ void loop()
         {
             fsVolumeControlActive = false;
             fsVolumeExitArmed = false;
+            // Sync lastPotRaw to maintain current volume until pot is physically moved
+            lastPotRaw = (int)(fsControlledVolume * 1023.0f);
             currentScreen = SCREEN_HOME;
             Serial.println("FS volume control timeout");
         }
@@ -167,7 +175,7 @@ void loop()
                 // Handle FS1 press (decrement volume)
                 if (fs1_raw && !prevFs1)
                 {
-                    fsControlledVolume -= 0.05f; // Decrement by 5%
+                    fsControlledVolume -= 0.10f; // Decrement by 10%
                     if (fsControlledVolume < 0.0f)
                         fsControlledVolume = 0.0f;
                     lastFsVolumeActivityMs = now;
@@ -179,7 +187,7 @@ void loop()
                 // Handle FS2 press (increment volume)
                 if (fs2 && !prevFs2)
                 {
-                    fsControlledVolume += 0.05f; // Increment by 5%
+                    fsControlledVolume += 0.10f; // Increment by 10%
                     if (fsControlledVolume > 1.0f)
                         fsControlledVolume = 1.0f;
                     lastFsVolumeActivityMs = now;
@@ -260,8 +268,8 @@ void loop()
     const char *noteName = "---";
     updatePitchDetection(frequency, probability, noteName, currentInstrumentIsBass);
 
-    // Update chord in real-time while sampling (only when FS1 is held)
-    if (fs1 && lastDetectedFrequency > 0.0f)
+    // Update chord in real-time while sampling (only when FS1 is held and NOT in FS volume control mode)
+    if (fs1 && lastDetectedFrequency > 0.0f && !fsVolumeControlActive)
     {
         updateChordTonic(lastDetectedFrequency, currentKey, currentModeIsMajor);
     }
