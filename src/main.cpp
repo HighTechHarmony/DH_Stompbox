@@ -14,6 +14,7 @@ unsigned long fs1ForcedUntilMs = 0;
 // Footswitch volume control state
 bool fsVolumeControlActive = false;
 float fsControlledVolume = 0.5f; // 0.0 to 1.0
+bool useFsControlledVolume = false; // Whether to use FS volume (persists after exiting mode)
 unsigned long lastFsVolumeActivityMs = 0;
 int lastPotRaw = -1; // Track pot changes to detect override
 bool fsVolumeJustActivated = false; // Skip first adjustment when entering mode
@@ -62,22 +63,27 @@ void loop()
         lastPotRaw = potRaw; // Initialize on first loop
     }
     
-    // If pot has moved significantly while FS volume control is active, disable it
-    if (fsVolumeControlActive && abs(potRaw - lastPotRaw) > 10) // ~1% threshold
+    // If using FS-controlled volume and pot has moved significantly, switch back to pot control
+    if (useFsControlledVolume && abs(potRaw - lastPotRaw) > 10) // ~1% threshold
     {
-        fsVolumeControlActive = false;
-        fsVolumeExitArmed = false;
-        currentScreen = SCREEN_HOME;
+        useFsControlledVolume = false;
+        if (fsVolumeControlActive)
+        {
+            fsVolumeControlActive = false;
+            fsVolumeExitArmed = false;
+            currentScreen = SCREEN_HOME;
+        }
+        lastPotRaw = potRaw;
         Serial.println("FS volume control overridden by pot");
     }
-    // If not in FS mode, track pot changes normally
-    if (!fsVolumeControlActive)
+    // If not using FS volume, track pot changes normally
+    if (!useFsControlledVolume)
     {
         lastPotRaw = potRaw;
     }
 
     // Determine effective volume based on control mode
-    float effectiveVolume = fsVolumeControlActive ? fsControlledVolume : potNorm;
+    float effectiveVolume = useFsControlledVolume ? fsControlledVolume : potNorm;
 
     // Update chord volume in real-time
     updateChordVolume(effectiveVolume);
@@ -129,8 +135,7 @@ void loop()
             fsVolumePreventReenterUntilMs = now + 200; // 200ms cooldown
             // Ignore all FS inputs for settling time to prevent accidental triggers
             fsIgnoreInputsUntilMs = now + 250; // 250ms settling time
-            // Sync lastPotRaw to maintain current volume until pot is physically moved
-            lastPotRaw = (int)(fsControlledVolume * 1023.0f);
+            // Keep useFsControlledVolume true so volume persists until pot is moved
             currentScreen = SCREEN_HOME;
             Serial.println("FS volume control exited by simultaneous FS press (armed)");
         }
@@ -140,6 +145,7 @@ void loop()
     if (fs1_raw && fs2 && !prevFs1 && !prevFs2 && now >= fsVolumePreventReenterUntilMs)
     {
         fsVolumeControlActive = true;
+        useFsControlledVolume = true;
         fsVolumeJustActivated = true; // Skip adjustment on activation
         fsVolumeExitArmed = false; // require a release before allowing exit
         fsControlledVolume = effectiveVolume; // Start with current volume
@@ -158,8 +164,7 @@ void loop()
         {
             fsVolumeControlActive = false;
             fsVolumeExitArmed = false;
-            // Sync lastPotRaw to maintain current volume until pot is physically moved
-            lastPotRaw = (int)(fsControlledVolume * 1023.0f);
+            // Keep useFsControlledVolume true so volume persists until pot is moved
             currentScreen = SCREEN_HOME;
             Serial.println("FS volume control timeout");
         }
