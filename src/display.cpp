@@ -44,18 +44,48 @@ void renderHomeScreen(const char *noteName, float frequency)
 
     // Display key and mode
     display.setCursor(0, y);
-    display.print("Key: ");
+    
     const char *keyNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
-    display.print(keyNames[currentKey]);
-    if (!currentModeIsMajor)
+    // If in Fixed interval modes, show a descriptive fixed-interval label
+    if (currentMode == 2)
     {
-        display.print("m");
+        display.print("Fix Int M");
     }
-    y += 20;
+
+    else if (currentMode == 3)
+    {
+        display.print("Fix Int m");
+    }
+    else
+    {
+        // Print key and a short mode code that fits within 10 characters total
+        // (including the space after the key). For example: "E Mj", "Bb Mn".
+        display.print(keyNames[currentKey]);
+        // Short mode codes for diatonic modes
+        const char *modeShort[] = {"Maj", "Min"};
+        String keyStr = String(keyNames[currentKey]);
+        int keyLen = keyStr.length();
+        int maxTotal = 10;                         // maximum chars including space after key
+        int maxModeLen = maxTotal - (keyLen + 1); // leave room for space
+        
+        if (maxModeLen >= 1)
+        {
+            String m = String(modeShort[currentMode]);
+            if ((int)m.length() > maxModeLen)
+                m = m.substring(0, maxModeLen);
+            display.print(" ");
+            display.print(m);
+        }
+    }
+    // Add a bit more vertical spacing to avoid text overlap with the next line
+    y += 24;
 
     // Display detected note and frequency
-    display.setCursor(0, y);
     display.setTextSize(2);
+    // Clear the area where the "Note" label/value will be drawn to avoid
+    // any remnants from previous frames or longer mode names.
+    display.fillRect(0, y, SCREEN_WIDTH, 20, SSD1306_BLACK);
+    display.setCursor(0, y);
     display.print("Note: ");
     display.print(noteName);
     y += 20;

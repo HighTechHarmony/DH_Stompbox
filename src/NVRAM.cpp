@@ -4,7 +4,7 @@
 
 // Define global variables declared as extern in NVRAM.h
 int currentKey = 0;                   // 0=C, 1=C#, 2=D, etc. (chromatic scale)
-bool currentModeIsMajor = true;       // true=major, false=minor
+int currentMode = 0;                  // 0=Major, 1=Minor, 2=Fixed Major, 3=Fixed Minor
 int currentOctaveShift = 0;           // -1..2
 bool currentInstrumentIsBass = false; // false=Guitar (default), true=Bass
 // Muting setting persisted (false=Disabled, true=Enabled)
@@ -15,7 +15,11 @@ void saveNVRAM()
 {
     EEPROM.write(NVRAM_SIGNATURE_ADDR, NVRAM_SIGNATURE);
     EEPROM.write(NVRAM_KEY_ADDR, (uint8_t)currentKey);
-    EEPROM.write(NVRAM_MODE_ADDR, (uint8_t)(currentModeIsMajor ? 1 : 0));
+    // store mode as 0..3
+    uint8_t modeVal = (uint8_t)currentMode;
+    if (modeVal > 3)
+        modeVal = 0;
+    EEPROM.write(NVRAM_MODE_ADDR, modeVal);
     EEPROM.write(NVRAM_BASSGUIT_ADDR, (uint8_t)(currentInstrumentIsBass ? 1 : 0));
     EEPROM.write(NVRAM_MUTING_ADDR, (uint8_t)(currentMutingEnabled ? 1 : 0));
     EEPROM.write(NVRAM_SYNTHSND_ADDR, (uint8_t)currentSynthSound);
@@ -37,11 +41,15 @@ void loadNVRAM()
         if (k < 12)
             currentKey = k;
         uint8_t m = EEPROM.read(NVRAM_MODE_ADDR);
-        currentModeIsMajor = (m == 1);
+        if (m <= 3)
+            currentMode = m;
+        else
+            currentMode = 0;
         Serial.print("NVRAM: loaded key=");
         Serial.print(currentKey);
+        const char *modeNames[] = {"Major", "Minor", "Fixed Major", "Fixed Minor"};
         Serial.print(" mode=");
-        Serial.println(currentModeIsMajor ? "Major" : "Minor");
+        Serial.println(modeNames[currentMode]);
         // load octave (stored as +2 offset)
         uint8_t oe = EEPROM.read(NVRAM_OCTAVE_ADDR);
         if (oe >= 1 && oe <= 5) // sanity check (1..5 corresponds to -1..3 but we expect 1..4)
@@ -83,8 +91,8 @@ void loadNVRAM()
     {
         // Not initialized: use defaults and write them
         Serial.println("NVRAM: empty, using default C Major");
-        currentKey = 0; // C
-        currentModeIsMajor = true;
+        currentKey = 0;                  // C
+        currentMode = 0;                 // Major
         currentInstrumentIsBass = false; // default to Guitar
         currentMutingEnabled = false;    // default muting disabled        currentSynthSound = 0; // default to Sine        saveNVRAM();
     }

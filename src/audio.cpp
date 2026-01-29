@@ -147,7 +147,7 @@ void setReverbWet(float wet)
     wetDryRight.gain(1, wetGain);
 }
 
-float getDiatonicThird(float noteFreq, int keyNote, bool isMajor)
+float getDiatonicThird(float noteFreq, int keyNote, int mode)
 {
     // Convert frequency to MIDI note number
     float midiNote = 12.0f * log2f(noteFreq / 440.0f) + 69.0f;
@@ -156,12 +156,12 @@ float getDiatonicThird(float noteFreq, int keyNote, bool isMajor)
     // Calculate position in scale relative to key
     int relativePosition = (noteClass - keyNote + 12) % 12;
 
-    // Determine the third interval based on scale degree
+    // Determine the third interval based on selected mode
     int thirdSemitones = 3; // default to minor third
 
-    if (isMajor)
+    if (mode == 0)
     {
-        // Major scale: major thirds on scale degrees I, IV, V (positions 0, 5, 7)
+        // Major mode: diatonic selection based on scale degree
         if (relativePosition == 0 || relativePosition == 5 || relativePosition == 7)
         {
             thirdSemitones = 4; // major third
@@ -171,9 +171,9 @@ float getDiatonicThird(float noteFreq, int keyNote, bool isMajor)
             thirdSemitones = 3; // minor third
         }
     }
-    else
+    else if (mode == 1)
     {
-        // Natural minor scale: major thirds on scale degrees III, VI, VII (positions 3, 8, 10)
+        // Natural minor: diatonic selection
         if (relativePosition == 3 || relativePosition == 8 || relativePosition == 10)
         {
             thirdSemitones = 4; // major third
@@ -182,6 +182,16 @@ float getDiatonicThird(float noteFreq, int keyNote, bool isMajor)
         {
             thirdSemitones = 3; // minor third
         }
+    }
+    else if (mode == 2)
+    {
+        // Fixed Major: always major third
+        thirdSemitones = 4;
+    }
+    else if (mode == 3)
+    {
+        // Fixed Minor: always minor third
+        thirdSemitones = 3;
     }
 
     return powf(2.0f, thirdSemitones / 12.0f);
@@ -367,7 +377,7 @@ void initStringsSound(float tonic, float third, float fifth, float octaveMul, fl
     myEffect3Rhodes2.amplitude(ampPerOsc);
 }
 
-void startChord(float potNorm, float tonicFreq, int keyNote, bool isMajor)
+void startChord(float potNorm, float tonicFreq, int keyNote, int mode)
 {
     // choose tonic: passed in or last detected
     float tonic = (tonicFreq > 1.0f) ? tonicFreq : lastDetectedFrequency;
@@ -381,7 +391,7 @@ void startChord(float potNorm, float tonicFreq, int keyNote, bool isMajor)
     chordFading = false;
 
     // compute triad intervals (diatonic third, perfect fifth)
-    const float third = getDiatonicThird(tonic, keyNote, isMajor);
+    const float third = getDiatonicThird(tonic, keyNote, mode);
     const float fifth = powf(2.0f, 7.0f / 12.0f); // +7 semitones
 
     // apply octave shift
@@ -422,7 +432,7 @@ void startChord(float potNorm, float tonicFreq, int keyNote, bool isMajor)
     arpLastStepMs = millis();
 }
 
-void updateChordTonic(float tonicFreq, int keyNote, bool isMajor)
+void updateChordTonic(float tonicFreq, int keyNote, int mode)
 {
     if (!chordActive || tonicFreq <= 0.0f)
         return;
@@ -430,7 +440,7 @@ void updateChordTonic(float tonicFreq, int keyNote, bool isMajor)
     currentChordTonic = tonicFreq;
 
     // compute triad intervals (diatonic third, perfect fifth)
-    const float third = getDiatonicThird(tonicFreq, keyNote, isMajor);
+    const float third = getDiatonicThird(tonicFreq, keyNote, mode);
     const float fifth = powf(2.0f, 7.0f / 12.0f); // +7 semitones
 
     // apply octave shift

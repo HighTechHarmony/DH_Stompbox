@@ -31,8 +31,8 @@ const int KEY_MENU_COUNT = 12;
 // Map menu index to chromatic scale (C=0, C#=1, ... B=11)
 const int keyMenuToChromatic[] = {9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8}; // A, Bb, B, C, C#, D, D#, E, F, F#, G, G#
 
-const char *modeMenuNames[] = {"Major", "Minor"};
-const int MODE_MENU_COUNT = 2;
+const char *modeMenuNames[] = {"Major", "Minor", "Fixed Ma", "Fixed Mi"};
+const int MODE_MENU_COUNT = 4;
 
 const char *bassGuitMenuNames[] = {"Bass", "Guitar"};
 const int BASSGUIT_MENU_COUNT = 2;
@@ -144,7 +144,8 @@ void handleMenuButton()
         else if (menuTopIndex == 1) // Mode
         {
             currentMenuLevel = MENU_MODE_SELECT;
-            menuModeIndex = currentModeIsMajor ? 0 : 1;
+            // initialize to current mode (0..3)
+            menuModeIndex = currentMode;
         }
         else if (menuTopIndex == 2) // Octave
         {
@@ -207,7 +208,7 @@ void handleMenuButton()
         }
         else
         {
-            currentModeIsMajor = (menuModeIndex == 0);
+            currentMode = menuModeIndex; // 0..3
             saveNVRAM();
             currentMenuLevel = MENU_TOP;
         }
@@ -226,7 +227,7 @@ void handleMenuButton()
             // apply immediately if chord active
             if (chordActive)
             {
-                updateChordTonic(currentChordTonic, currentKey, currentModeIsMajor);
+                updateChordTonic(currentChordTonic, currentKey, currentMode);
             }
             currentMenuLevel = MENU_TOP;
         }

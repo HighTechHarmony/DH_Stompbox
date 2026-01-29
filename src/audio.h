@@ -65,14 +65,15 @@ extern float globalTempoBPM; // Global tempo for arpeggiator
 // Audio functions
 void setupAudio();
 void setReverbWet(float wet);
-float getDiatonicThird(float noteFreq, int keyNote, bool isMajor);
+// mode: 0=Major, 1=Minor, 2=Fixed Major, 3=Fixed Minor
+float getDiatonicThird(float noteFreq, int keyNote, int mode);
 void stopAllOscillators();
 void initSineSound(float tonic, float third, float fifth, float octaveMul, float perVoice);
 void initOrganSound(float tonic, float third, float fifth, float octaveMul, float perVoice);
 void initRhodesSound(float tonic, float third, float fifth, float octaveMul, float perVoice);
 void initStringsSound(float tonic, float third, float fifth, float octaveMul, float perVoice);
-void startChord(float potNorm, float tonicFreq, int keyNote, bool isMajor);
-void updateChordTonic(float tonicFreq, int keyNote, bool isMajor);
+void startChord(float potNorm, float tonicFreq, int keyNote, int mode);
+void updateChordTonic(float tonicFreq, int keyNote, int mode);
 void stopChord();
 void updateChordVolume(float potNorm);
 void updateChordFade();

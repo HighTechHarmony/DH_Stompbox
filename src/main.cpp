@@ -13,14 +13,14 @@ unsigned long fs1ForcedUntilMs = 0;
 
 // Footswitch volume control state
 bool fsVolumeControlActive = false;
-float fsControlledVolume = 0.5f; // 0.0 to 1.0
+float fsControlledVolume = 0.5f;    // 0.0 to 1.0
 bool useFsControlledVolume = false; // Whether to use FS volume (persists after exiting mode)
 unsigned long lastFsVolumeActivityMs = 0;
-int lastPotRaw = -1; // Track pot changes to detect override
-bool fsVolumeJustActivated = false; // Skip first adjustment when entering mode
-bool fsVolumeExitArmed = false;     // require release before allowing simultaneous-press exit
+int lastPotRaw = -1;                             // Track pot changes to detect override
+bool fsVolumeJustActivated = false;              // Skip first adjustment when entering mode
+bool fsVolumeExitArmed = false;                  // require release before allowing simultaneous-press exit
 unsigned long fsVolumePreventReenterUntilMs = 0; // prevent immediate re-entry after exit
-unsigned long fsIgnoreInputsUntilMs = 0; // settling time after FS volume mode changes
+unsigned long fsIgnoreInputsUntilMs = 0;         // settling time after FS volume mode changes
 
 // Tap tempo state
 bool tapTempoActive = false;
@@ -68,7 +68,7 @@ void loop()
     {
         lastPotRaw = potRaw; // Initialize on first loop
     }
-    
+
     // If using FS-controlled volume and pot has moved significantly, switch back to pot control
     if (useFsControlledVolume && abs(potRaw - lastPotRaw) > 10) // ~1% threshold
     {
@@ -115,7 +115,7 @@ void loop()
     // Restart chord if not active (ensure continuous playback)
     if (!chordActive && !chordSuppressed)
     {
-        startChord(effectiveVolume, currentChordTonic, currentKey, currentModeIsMajor);
+        startChord(effectiveVolume, currentChordTonic, currentKey, currentMode);
     }
 
     // Read inputs
@@ -155,8 +155,8 @@ void loop()
     {
         fsVolumeControlActive = true;
         useFsControlledVolume = true;
-        fsVolumeJustActivated = true; // Skip adjustment on activation
-        fsVolumeExitArmed = false; // require a release before allowing exit
+        fsVolumeJustActivated = true;         // Skip adjustment on activation
+        fsVolumeExitArmed = false;            // require a release before allowing exit
         fsControlledVolume = effectiveVolume; // Start with current volume
         lastFsVolumeActivityMs = now;
         // Ignore all FS inputs for settling time to prevent accidental triggers
@@ -197,7 +197,7 @@ void loop()
                     Serial.print("FS volume decreased to: ");
                     Serial.println(fsControlledVolume * 100.0f);
                 }
-                
+
                 // Handle FS2 press (increment volume)
                 if (fs2 && !prevFs2)
                 {
@@ -259,18 +259,18 @@ void loop()
             {
                 // Convert interval to BPM: BPM = 60000 / interval_ms
                 float newBPM = 60000.0f / (float)tapInterval;
-                
+
                 // Clamp to 40-200 BPM range
                 if (newBPM < 40.0f)
                     newBPM = 40.0f;
                 if (newBPM > 200.0f)
                     newBPM = 200.0f;
-                
+
                 globalTempoBPM = newBPM;
-                
+
                 // Update arp step duration: eighth note = (60000 / BPM) / 2
                 arpStepDurationMs = (unsigned long)(30000.0f / globalTempoBPM);
-                
+
                 lastTapTempoActivityMs = now;
                 Serial.print("Tap tempo: ");
                 Serial.print(globalTempoBPM);
@@ -288,7 +288,7 @@ void loop()
                 lastTapTempoActivityMs = now;
                 lastFs2TapMs = now;
                 currentScreen = SCREEN_TAP_TEMPO;
-                
+
                 // If fadeout was just started, abort it and restore volume
                 if (chordFading)
                 {
@@ -319,7 +319,7 @@ void loop()
                     currentScreen = SCREEN_HOME;
                 }
             }
-            
+
             lastFs2TapMs = now;
         }
     }
@@ -341,7 +341,7 @@ void loop()
         if (chordSuppressed)
         {
             // Start with tonic=0; chord will update once fresh pitch is detected
-            startChord(effectiveVolume, 0.0f, currentKey, currentModeIsMajor);
+            startChord(effectiveVolume, 0.0f, currentKey, currentMode);
         }
     }
 
@@ -354,7 +354,7 @@ void loop()
     // Update chord in real-time while sampling (only when FS1 is held and NOT in FS volume control mode or tap tempo mode)
     if (fs1 && lastDetectedFrequency > 0.0f && !fsVolumeControlActive && !tapTempoActive)
     {
-        updateChordTonic(lastDetectedFrequency, currentKey, currentModeIsMajor);
+        updateChordTonic(lastDetectedFrequency, currentKey, currentMode);
     }
 
     // FS1 release edge: start Rhodes decay if Rhodes is active

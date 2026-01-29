@@ -19,7 +19,8 @@
 #define NVRAM_ARP_ADDR 7
 
 extern int currentKey;
-extern bool currentModeIsMajor;
+// Mode: 0=Major, 1=Minor, 2=Fixed Major, 3=Fixed Minor
+extern int currentMode;
 extern int currentOctaveShift;
 extern bool currentInstrumentIsBass;
 extern bool currentMutingEnabled;
