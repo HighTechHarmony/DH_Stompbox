@@ -271,6 +271,9 @@ void loop()
                 // Update arp step duration: eighth note = (60000 / BPM) / 2
                 arpStepDurationMs = (unsigned long)(30000.0f / globalTempoBPM);
 
+                // Update the timer interval if arpeggiator is running
+                updateArpTimerInterval();
+
                 lastTapTempoActivityMs = now;
                 Serial.print("Tap tempo: ");
                 Serial.print(globalTempoBPM);

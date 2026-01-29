@@ -56,11 +56,11 @@ extern unsigned long rhodesDecayStartMs;
 extern unsigned long rhodesDecayDurationMs;
 extern float rhodesDecayStartAmp;
 // Arpeggiator control
-extern int currentArpMode; // 0=Arp, 1=Poly
-extern int arpCurrentStep; // 0=root, 1=third, 2=fifth
-extern unsigned long arpLastStepMs;
-extern unsigned long arpStepDurationMs; // 125ms for eighth notes at 120 BPM (updated by tempo)
-extern float globalTempoBPM; // Global tempo for arpeggiator
+extern volatile int currentArpMode;              // 0=Arp, 1=Poly
+extern volatile int arpCurrentStep;              // 0=root, 1=third, 2=fifth
+extern volatile unsigned long arpStepDurationMs; // 125ms for eighth notes at 120 BPM (updated by tempo)
+extern volatile bool arpTimerActive;             // True when arp timer is running
+extern float globalTempoBPM;                     // Global tempo for arpeggiator
 
 // Audio functions
 void setupAudio();
@@ -81,5 +81,8 @@ void updateVibrato();
 void startRhodesDecay();
 void updateRhodesDecay();
 void updateArpeggiator();
+void startArpTimer();
+void stopArpTimer();
+void updateArpTimerInterval();
 
 #endif // AUDIO_H

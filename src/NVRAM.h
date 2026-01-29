@@ -24,8 +24,8 @@ extern int currentMode;
 extern int currentOctaveShift;
 extern bool currentInstrumentIsBass;
 extern bool currentMutingEnabled;
-extern int currentSynthSound; // 0=Sine, 1=Organ, etc.
-extern int currentArpMode; // 0=Arp, 1=Poly
+extern int currentSynthSound;       // 0=Sine, 1=Organ, etc.
+extern volatile int currentArpMode; // 0=Arp, 1=Poly
 
 void saveNVRAM();
 void loadNVRAM();
