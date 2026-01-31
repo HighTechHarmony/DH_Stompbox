@@ -11,6 +11,7 @@ int menuOctaveIndex = 1;   // index into octave options (default 0)
 int menuBassGuitIndex = 0; // 0=Bass, 1=Guitar
 int menuSynthSndIndex = 0; // 0=Sine, 1=Organ
 int menuArpIndex = 1;      // 0=Arp, 1=Poly (default Poly)
+int menuConfigIndex = 0;   // 0=Bass/Gtr, 1=Muting
 
 // Viewport tracking for scrolling submenus
 int keyViewportStart = 0;
@@ -21,10 +22,11 @@ int bassGuitViewportStart = 0;
 int mutingViewportStart = 0;
 int synthSndViewportStart = 0;
 int arpViewportStart = 0;
+int configViewportStart = 0;
 
 // Menu display names
-const char *menuTopItems[] = {"MusicKey", "Maj/Min", "Octave", "Bass/Gtr", "Muting", "SynthSnd", "Arp/Poly"};
-const int MENU_TOP_COUNT = 7;
+const char *menuTopItems[] = {"MusicKey", "Maj/Min", "Octave", "SynthSnd", "Arp/Poly", "Config"};
+const int MENU_TOP_COUNT = 6;
 
 const char *keyMenuNames[] = {"A", "Bb", "B", "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab"};
 const int KEY_MENU_COUNT = 12;
@@ -54,6 +56,10 @@ const int SYNTHSND_MENU_COUNT = 4;
 // Arpeggiator options
 const char *arpMenuNames[] = {"Arp", "Poly"};
 const int ARP_MENU_COUNT = 2;
+
+// Config submenu options
+const char *configMenuNames[] = {"Bass/Gtr", "Muting"};
+const int CONFIG_MENU_COUNT = 2;
 
 void handleMenuEncoder(int delta)
 {
@@ -121,6 +127,14 @@ void handleMenuEncoder(int delta)
         if (menuArpIndex > ARP_MENU_COUNT)
             menuArpIndex = ARP_MENU_COUNT; // allow Parent
     }
+    else if (currentMenuLevel == MENU_CONFIG_SELECT)
+    {
+        menuConfigIndex += delta;
+        if (menuConfigIndex < 0)
+            menuConfigIndex = 0;
+        if (menuConfigIndex > CONFIG_MENU_COUNT)
+            menuConfigIndex = CONFIG_MENU_COUNT; // allow Parent
+    }
 }
 
 void handleMenuButton()
@@ -160,29 +174,22 @@ void handleMenuButton()
                 }
             }
         }
-        else if (menuTopIndex == 3) // Bass/Guit
-        {
-            currentMenuLevel = MENU_BASSGUIT_SELECT;
-            // Initialize to current instrument setting (0=Bass,1=Guitar)
-            menuBassGuitIndex = currentInstrumentIsBass ? 0 : 1;
-        }
-        else if (menuTopIndex == 4) // Muting
-        {
-            currentMenuLevel = MENU_MUTING_SELECT;
-            // Initialize to current muting setting (0=Disabled,1=Enabled)
-            menuMutingIndex = currentMutingEnabled ? 1 : 0;
-        }
-        else if (menuTopIndex == 5) // SynthSnd
+        else if (menuTopIndex == 3) // SynthSnd (was index 5)
         {
             currentMenuLevel = MENU_SYNTHSND_SELECT;
             // Initialize to current synth sound setting
             menuSynthSndIndex = currentSynthSound;
         }
-        else if (menuTopIndex == 6) // Arp
+        else if (menuTopIndex == 4) // Arp (was index 6)
         {
             currentMenuLevel = MENU_ARP_SELECT;
             // Initialize to current arp mode (0=Arp, 1=Poly)
             menuArpIndex = currentArpMode;
+        }
+        else if (menuTopIndex == 5) // Config (new)
+        {
+            currentMenuLevel = MENU_CONFIG_SELECT;
+            menuConfigIndex = 0;
         }
     }
     else if (currentMenuLevel == MENU_KEY_SELECT)
@@ -234,32 +241,32 @@ void handleMenuButton()
     }
     else if (currentMenuLevel == MENU_BASSGUIT_SELECT)
     {
-        // If Parent selected, return to top. Otherwise apply instrument mode.
+        // If Parent selected, return to Config. Otherwise apply instrument mode.
         if (menuBassGuitIndex == BASSGUIT_MENU_COUNT)
         {
-            currentMenuLevel = MENU_TOP;
+            currentMenuLevel = MENU_CONFIG_SELECT;
         }
         else
         {
             // menuBassGuitIndex: 0=Bass,1=Guitar
             currentInstrumentIsBass = (menuBassGuitIndex == 0);
             saveNVRAM();
-            currentMenuLevel = MENU_TOP;
+            currentMenuLevel = MENU_CONFIG_SELECT;
         }
     }
     else if (currentMenuLevel == MENU_MUTING_SELECT)
     {
-        // If Parent selected, return to top. Otherwise apply muting setting.
+        // If Parent selected, return to Config. Otherwise apply muting setting.
         if (menuMutingIndex == MUTING_MENU_COUNT)
         {
-            currentMenuLevel = MENU_TOP;
+            currentMenuLevel = MENU_CONFIG_SELECT;
         }
         else
         {
             // menuMutingIndex: 0=Disabled,1=Enabled
             currentMutingEnabled = (menuMutingIndex == 1);
             saveNVRAM();
-            currentMenuLevel = MENU_TOP;
+            currentMenuLevel = MENU_CONFIG_SELECT;
         }
     }
     else if (currentMenuLevel == MENU_SYNTHSND_SELECT)
@@ -288,6 +295,26 @@ void handleMenuButton()
             currentArpMode = menuArpIndex;
             saveNVRAM();
             currentMenuLevel = MENU_TOP;
+        }
+    }
+    else if (currentMenuLevel == MENU_CONFIG_SELECT)
+    {
+        // If Parent selected, return to top. Otherwise enter sub-submenu.
+        if (menuConfigIndex == CONFIG_MENU_COUNT)
+        {
+            currentMenuLevel = MENU_TOP;
+        }
+        else if (menuConfigIndex == 0) // Bass/Gtr
+        {
+            currentMenuLevel = MENU_BASSGUIT_SELECT;
+            // Initialize to current instrument setting (0=Bass,1=Guitar)
+            menuBassGuitIndex = currentInstrumentIsBass ? 0 : 1;
+        }
+        else if (menuConfigIndex == 1) // Muting
+        {
+            currentMenuLevel = MENU_MUTING_SELECT;
+            // Initialize to current muting setting (0=Disabled,1=Enabled)
+            menuMutingIndex = currentMutingEnabled ? 1 : 0;
         }
     }
 }

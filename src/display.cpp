@@ -323,9 +323,9 @@ void renderMenuScreen()
     }
     else if (currentMenuLevel == MENU_BASSGUIT_SELECT)
     {
-        // Bass/Guitar selection submenu - show current menu name at top
+        // Bass/Guitar selection submenu - show Config as parent title
         display.setCursor(0, 0);
-        display.println(menuTopItems[3]);
+        display.println("Bass/Gtr");
 
         int totalCount = BASSGUIT_MENU_COUNT + 1; // includes Parent
         int visible = 3;
@@ -372,9 +372,9 @@ void renderMenuScreen()
     }
     else if (currentMenuLevel == MENU_MUTING_SELECT)
     {
-        // Muting selection submenu - show current menu name at top
+        // Muting selection submenu - show Config as parent title
         display.setCursor(0, 0);
-        display.println(menuTopItems[4]);
+        display.println("Muting");
 
         int totalCount = MUTING_MENU_COUNT + 1; // includes Parent
         int visible = 3;
@@ -423,7 +423,7 @@ void renderMenuScreen()
     {
         // Synth Sound selection submenu - show current menu name at top
         display.setCursor(0, 0);
-        display.println(menuTopItems[5]);
+        display.println(menuTopItems[3]);
 
         int totalCount = SYNTHSND_MENU_COUNT + 1; // includes Parent
         int visible = 3;
@@ -472,7 +472,7 @@ void renderMenuScreen()
     {
         // Arp selection submenu - show current menu name at top
         display.setCursor(0, 0);
-        display.println(menuTopItems[6]);
+        display.println(menuTopItems[4]);
 
         int totalCount = ARP_MENU_COUNT + 1; // includes Parent
         int visible = 3;
@@ -513,6 +513,55 @@ void renderMenuScreen()
 
             if (idx < ARP_MENU_COUNT)
                 display.println(arpMenuNames[idx]);
+            else
+                display.println("^");
+        }
+    }
+    else if (currentMenuLevel == MENU_CONFIG_SELECT)
+    {
+        // Config selection submenu - show current menu name at top
+        display.setCursor(0, 0);
+        display.println(menuTopItems[5]);
+
+        int totalCount = CONFIG_MENU_COUNT + 1; // includes Parent
+        int visible = 3;
+
+        // Stable viewport scrolling
+        if (menuConfigIndex < configViewportStart)
+        {
+            configViewportStart = menuConfigIndex;
+        }
+        else if (menuConfigIndex >= configViewportStart + visible)
+        {
+            configViewportStart = menuConfigIndex - visible + 1;
+        }
+
+        if (configViewportStart < 0)
+            configViewportStart = 0;
+        if (configViewportStart > totalCount - visible)
+            configViewportStart = totalCount - visible;
+        if (configViewportStart < 0)
+            configViewportStart = 0;
+
+        for (int i = 0; i < visible; i++)
+        {
+            int idx = configViewportStart + i;
+            if (idx >= totalCount)
+                break;
+
+            int y = 18 + i * 18;
+            display.setCursor(0, y);
+            if (idx == menuConfigIndex)
+            {
+                display.print("> ");
+            }
+            else
+            {
+                display.print("  ");
+            }
+
+            if (idx < CONFIG_MENU_COUNT)
+                display.println(configMenuNames[idx]);
             else
                 display.println("^");
         }
