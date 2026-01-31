@@ -2,21 +2,17 @@
 #include "pitch.h"
 #include "NVRAM.h"
 
-// Define audio objects
-AudioSynthWaveform myEffect;
-AudioSynthWaveform myEffect2; // second voice (minor 3rd)
-AudioSynthWaveform myEffect3; // third voice (5th)
-// Additional oscillators for organ sound
-AudioSynthWaveform myEffectOrg2;
-AudioSynthWaveform myEffectOrg3;
-AudioSynthWaveform myEffect2Org2;
-AudioSynthWaveform myEffect2Org3;
-AudioSynthWaveform myEffect3Org2;
-AudioSynthWaveform myEffect3Org3;
-// Additional oscillators for Rhodes and Strings (2 per voice)
-AudioSynthWaveform myEffectRhodes2;
-AudioSynthWaveform myEffect2Rhodes2;
-AudioSynthWaveform myEffect3Rhodes2;
+// Define audio objects - Simplified: 2 oscillators per voice (primary + detuned)
+// Voice 1 (root): myEffect + myEffect1b
+// Voice 2 (third): myEffect2 + myEffect2b
+// Voice 3 (fifth): myEffect3 + myEffect3b
+AudioSynthWaveform myEffect;   // root voice primary
+AudioSynthWaveform myEffect1b; // root voice detuned
+AudioSynthWaveform myEffect2;  // third voice primary
+AudioSynthWaveform myEffect2b; // third voice detuned
+AudioSynthWaveform myEffect3;  // fifth voice primary
+AudioSynthWaveform myEffect3b; // fifth voice detuned
+
 AudioInputI2S audioInput;   // Audio shield input
 AudioOutputI2S audioOutput; // Audio shield output
 AudioMixer4 mixerLeft;      // Mix input + synth for left channel
@@ -28,14 +24,8 @@ AudioEffectFreeverb reverb; // stereo freeverb
 AudioMixer4 wetDryLeft;     // mix dry (mixerLeft) + wet (reverb L)
 AudioMixer4 wetDryRight;    // mix dry (mixerRight) + wet (reverb R)
 
-// Synth-only mixers (so reverb is applied only to synth voices)
-AudioMixer4 synthOnlyLeft;  // mix synth voices for left reverb input
-AudioMixer4 synthOnlyRight; // mix synth voices for right reverb input
-
-// Sub-mixers to combine multiple oscillators per voice before main mixer
-AudioMixer4 voiceMix1; // combines all root voice oscillators
-AudioMixer4 voiceMix2; // combines all third voice oscillators
-AudioMixer4 voiceMix3; // combines all fifth voice oscillators
+// Synth voice mixer (combines oscillators for reverb input)
+AudioMixer4 synthMix; // combines all synth oscillators for reverb
 
 // Audio shield control
 AudioControlSGTL5000 audioShield;
@@ -61,9 +51,10 @@ bool organVibratoEnabled = true;
 float organVibratoRate = 6.0f;    // Hz
 float organVibratoDepth = 0.015f; // fractional depth (±1.5%)
 
-// Detune ratios used by organ voices
-float organDetune1 = 1.002f; // +~3.5 cents
-float organDetune2 = 0.998f; // -~3.5 cents
+// Detune ratios used by different sounds
+float organDetune = 1.002f;   // +~3.5 cents for organ
+float rhodesDetune = 1.0015f; // +2.6 cents for rhodes
+float stringsDetune = 1.004f; // +6.9 cents for strings
 
 // Base frequencies for vibrato application (set when organ is initialized/updated)
 float organBaseRootFreq = 440.0f;
@@ -92,42 +83,23 @@ AudioConnection patchInR(audioInput, 1, mixerRight, 0); // right input → mixer
 AudioConnection patchPitch(audioInput, 0, noteDetect, 0);
 AudioConnection patchPeak(audioInput, 0, peak1, 0);
 
-// Connect all oscillators to voice sub-mixers first
-// Voice 1 (root) - all root oscillators to voiceMix1
-AudioConnection patchVoice1a(myEffect, 0, voiceMix1, 0);
-AudioConnection patchVoice1b(myEffectOrg2, 0, voiceMix1, 1);
-AudioConnection patchVoice1c(myEffectOrg3, 0, voiceMix1, 2);
-AudioConnection patchVoice1d(myEffectRhodes2, 0, voiceMix1, 3);
-// Voice 2 (third) - all third oscillators to voiceMix2
-AudioConnection patchVoice2a(myEffect2, 0, voiceMix2, 0);
-AudioConnection patchVoice2b(myEffect2Org2, 0, voiceMix2, 1);
-AudioConnection patchVoice2c(myEffect2Org3, 0, voiceMix2, 2);
-AudioConnection patchVoice2d(myEffect2Rhodes2, 0, voiceMix2, 3);
-// Voice 3 (fifth) - all fifth oscillators to voiceMix3
-AudioConnection patchVoice3a(myEffect3, 0, voiceMix3, 0);
-AudioConnection patchVoice3b(myEffect3Org2, 0, voiceMix3, 1);
-AudioConnection patchVoice3c(myEffect3Org3, 0, voiceMix3, 2);
-AudioConnection patchVoice3d(myEffect3Rhodes2, 0, voiceMix3, 3);
+// Connect primary oscillators directly to main mixers (ch1, ch2, ch3)
+AudioConnection patchOsc1ToL(myEffect, 0, mixerLeft, 1);
+AudioConnection patchOsc1ToR(myEffect, 0, mixerRight, 1);
+AudioConnection patchOsc2ToL(myEffect2, 0, mixerLeft, 2);
+AudioConnection patchOsc2ToR(myEffect2, 0, mixerRight, 2);
+AudioConnection patchOsc3ToL(myEffect3, 0, mixerLeft, 3);
+AudioConnection patchOsc3ToR(myEffect3, 0, mixerRight, 3);
 
-// Connect voice mixers to main output mixers
-AudioConnection patchVoice1ToL(voiceMix1, 0, mixerLeft, 1);
-AudioConnection patchVoice1ToR(voiceMix1, 0, mixerRight, 1);
-AudioConnection patchVoice2ToL(voiceMix2, 0, mixerLeft, 2);
-AudioConnection patchVoice2ToR(voiceMix2, 0, mixerRight, 2);
-AudioConnection patchVoice3ToL(voiceMix3, 0, mixerLeft, 3);
-AudioConnection patchVoice3ToR(voiceMix3, 0, mixerRight, 3);
-
-// Connect voice mixers to synth-only mixers (for reverb)
-AudioConnection patchVoice1ToSynthL(voiceMix1, 0, synthOnlyLeft, 0);
-AudioConnection patchVoice1ToSynthR(voiceMix1, 0, synthOnlyRight, 0);
-AudioConnection patchVoice2ToSynthL(voiceMix2, 0, synthOnlyLeft, 1);
-AudioConnection patchVoice2ToSynthR(voiceMix2, 0, synthOnlyRight, 1);
-AudioConnection patchVoice3ToSynthL(voiceMix3, 0, synthOnlyLeft, 2);
-AudioConnection patchVoice3ToSynthR(voiceMix3, 0, synthOnlyRight, 2);
+// Connect all oscillators to synth mixer for reverb input
+AudioConnection patchSynth1(myEffect, 0, synthMix, 0);
+AudioConnection patchSynth2(myEffect2, 0, synthMix, 1);
+AudioConnection patchSynth3(myEffect3, 0, synthMix, 2);
+// Note: detuned oscillators (myEffect1b, myEffect2b, myEffect3b) are summed
+// with primary oscillators at the amplitude level, so no separate routing needed
 
 // Reverb and output
-AudioConnection patchReverbInL(synthOnlyLeft, 0, reverb, 0);
-AudioConnection patchReverbInR(synthOnlyRight, 0, reverb, 1);
+AudioConnection patchReverbIn(synthMix, 0, reverb, 0);
 AudioConnection patchDryL(mixerLeft, 0, wetDryLeft, 0);
 AudioConnection patchWetL(reverb, 0, wetDryLeft, 1);
 AudioConnection patchDryR(mixerRight, 0, wetDryRight, 0);
@@ -203,17 +175,11 @@ float getDiatonicThird(float noteFreq, int keyNote, int mode)
 void stopAllOscillators()
 {
     myEffect.amplitude(0);
+    myEffect1b.amplitude(0);
     myEffect2.amplitude(0);
+    myEffect2b.amplitude(0);
     myEffect3.amplitude(0);
-    myEffectOrg2.amplitude(0);
-    myEffectOrg3.amplitude(0);
-    myEffect2Org2.amplitude(0);
-    myEffect2Org3.amplitude(0);
-    myEffect3Org2.amplitude(0);
-    myEffect3Org3.amplitude(0);
-    myEffectRhodes2.amplitude(0);
-    myEffect2Rhodes2.amplitude(0);
-    myEffect3Rhodes2.amplitude(0);
+    myEffect3b.amplitude(0);
 
     // Restore mixer gains to normal when stopping (in case arp mode left them muted)
     float synthGain = 0.8f;
@@ -223,20 +189,13 @@ void stopAllOscillators()
     mixerRight.gain(1, synthGain);
     mixerRight.gain(2, synthGain);
     mixerRight.gain(3, synthGain);
-    synthOnlyLeft.gain(0, 1.0f);
-    synthOnlyLeft.gain(1, 1.0f);
-    synthOnlyLeft.gain(2, 1.0f);
-    synthOnlyRight.gain(0, 1.0f);
-    synthOnlyRight.gain(1, 1.0f);
-    synthOnlyRight.gain(2, 1.0f);
 }
 
 void initSineSound(float tonic, float third, float fifth, float octaveMul, float perVoice)
 {
-    // Original sine wave sound - single oscillator per voice
+    // Sine wave sound - single oscillator per voice (detuned oscillators silent)
     stopAllOscillators();
 
-    // Ensure waveform type is sine (in case it was changed to sawtooth)
     myEffect.begin(WAVEFORM_SINE);
     myEffect2.begin(WAVEFORM_SINE);
     myEffect3.begin(WAVEFORM_SINE);
@@ -248,51 +207,42 @@ void initSineSound(float tonic, float third, float fifth, float octaveMul, float
     myEffect.amplitude(perVoice);
     myEffect2.amplitude(perVoice);
     myEffect3.amplitude(perVoice);
+    // Detuned oscillators stay at 0 amplitude for pure sine
 }
 
 void initOrganSound(float tonic, float third, float fifth, float octaveMul, float perVoice)
 {
-    // Organ sound - 3 slightly detuned oscillators per voice
+    // Organ sound - 2 slightly detuned oscillators per voice
     stopAllOscillators();
 
-    // Set all oscillators to sine waveform
     myEffect.begin(WAVEFORM_SINE);
+    myEffect1b.begin(WAVEFORM_SINE);
     myEffect2.begin(WAVEFORM_SINE);
+    myEffect2b.begin(WAVEFORM_SINE);
     myEffect3.begin(WAVEFORM_SINE);
-    myEffectOrg2.begin(WAVEFORM_SINE);
-    myEffectOrg3.begin(WAVEFORM_SINE);
-    myEffect2Org2.begin(WAVEFORM_SINE);
-    myEffect2Org3.begin(WAVEFORM_SINE);
-    myEffect3Org2.begin(WAVEFORM_SINE);
-    myEffect3Org3.begin(WAVEFORM_SINE);
+    myEffect3b.begin(WAVEFORM_SINE);
 
-    float ampPerOsc = perVoice / 3.0f; // divide amplitude across 3 oscillators
+    float ampPerOsc = perVoice / 2.0f; // divide amplitude across 2 oscillators per voice
 
-    // Root voice (3 oscillators)
+    // Root voice
     myEffect.frequency(tonic * octaveMul);
     myEffect.amplitude(ampPerOsc);
-    myEffectOrg2.frequency(tonic * octaveMul * organDetune1);
-    myEffectOrg2.amplitude(ampPerOsc);
-    myEffectOrg3.frequency(tonic * octaveMul * organDetune2);
-    myEffectOrg3.amplitude(ampPerOsc);
+    myEffect1b.frequency(tonic * octaveMul * organDetune);
+    myEffect1b.amplitude(ampPerOsc);
 
-    // Third voice (3 oscillators)
+    // Third voice
     myEffect2.frequency(tonic * third * octaveMul);
     myEffect2.amplitude(ampPerOsc);
-    myEffect2Org2.frequency(tonic * third * octaveMul * organDetune1);
-    myEffect2Org2.amplitude(ampPerOsc);
-    myEffect2Org3.frequency(tonic * third * octaveMul * organDetune2);
-    myEffect2Org3.amplitude(ampPerOsc);
+    myEffect2b.frequency(tonic * third * octaveMul * organDetune);
+    myEffect2b.amplitude(ampPerOsc);
 
-    // Fifth voice (3 oscillators)
+    // Fifth voice
     myEffect3.frequency(tonic * fifth * octaveMul);
     myEffect3.amplitude(ampPerOsc);
-    myEffect3Org2.frequency(tonic * fifth * octaveMul * organDetune1);
-    myEffect3Org2.amplitude(ampPerOsc);
-    myEffect3Org3.frequency(tonic * fifth * octaveMul * organDetune2);
-    myEffect3Org3.amplitude(ampPerOsc);
+    myEffect3b.frequency(tonic * fifth * octaveMul * organDetune);
+    myEffect3b.amplitude(ampPerOsc);
 
-    // store base freqs for vibrato
+    // Store base freqs for vibrato
     organBaseRootFreq = tonic * octaveMul;
     organBaseThirdFreq = tonic * third * octaveMul;
     organBaseFifthFreq = tonic * fifth * octaveMul;
@@ -306,38 +256,35 @@ void initOrganSound(float tonic, float third, float fifth, float octaveMul, floa
 void initRhodesSound(float tonic, float third, float fifth, float octaveMul, float perVoice)
 {
     // Rhodes sound - 2 oscillators per voice with bell-like character
-    // Primary sine + slightly detuned companion with lower amplitude
     stopAllOscillators();
 
-    // Set all oscillators to sine waveform
     myEffect.begin(WAVEFORM_SINE);
+    myEffect1b.begin(WAVEFORM_SINE);
     myEffect2.begin(WAVEFORM_SINE);
+    myEffect2b.begin(WAVEFORM_SINE);
     myEffect3.begin(WAVEFORM_SINE);
-    myEffectRhodes2.begin(WAVEFORM_SINE);
-    myEffect2Rhodes2.begin(WAVEFORM_SINE);
-    myEffect3Rhodes2.begin(WAVEFORM_SINE);
+    myEffect3b.begin(WAVEFORM_SINE);
 
-    float detune = 1.0015f;                // +2.6 cents - subtle bell-like chorus
     float mainAmp = perVoice * 0.65f;      // 65% primary
     float companionAmp = perVoice * 0.35f; // 35% companion
 
-    // Root voice (2 oscillators)
+    // Root voice
     myEffect.frequency(tonic * octaveMul);
     myEffect.amplitude(mainAmp);
-    myEffectRhodes2.frequency(tonic * octaveMul * detune);
-    myEffectRhodes2.amplitude(companionAmp);
+    myEffect1b.frequency(tonic * octaveMul * rhodesDetune);
+    myEffect1b.amplitude(companionAmp);
 
-    // Third voice (2 oscillators)
+    // Third voice
     myEffect2.frequency(tonic * third * octaveMul);
     myEffect2.amplitude(mainAmp);
-    myEffect2Rhodes2.frequency(tonic * third * octaveMul * detune);
-    myEffect2Rhodes2.amplitude(companionAmp);
+    myEffect2b.frequency(tonic * third * octaveMul * rhodesDetune);
+    myEffect2b.amplitude(companionAmp);
 
-    // Fifth voice (2 oscillators)
+    // Fifth voice
     myEffect3.frequency(tonic * fifth * octaveMul);
     myEffect3.amplitude(mainAmp);
-    myEffect3Rhodes2.frequency(tonic * fifth * octaveMul * detune);
-    myEffect3Rhodes2.amplitude(companionAmp);
+    myEffect3b.frequency(tonic * fifth * octaveMul * rhodesDetune);
+    myEffect3b.amplitude(companionAmp);
 
     Serial.print("Rhodes sound: root=");
     Serial.print(tonic * octaveMul);
@@ -352,40 +299,41 @@ void initStringsSound(float tonic, float third, float fifth, float octaveMul, fl
     // Strings sound - 2 sawtooth oscillators per voice for rich ensemble
     stopAllOscillators();
 
-    float detune = 1.004f;             // +6.9 cents - wider detune for ensemble
     float ampPerOsc = perVoice / 2.0f; // equal amplitude for both oscillators
 
-    // Root voice (2 sawtooth oscillators)
+    // Root voice
     myEffect.begin(WAVEFORM_SAWTOOTH);
     myEffect.frequency(tonic * octaveMul);
     myEffect.amplitude(ampPerOsc);
-    myEffectRhodes2.begin(WAVEFORM_SAWTOOTH);
-    myEffectRhodes2.frequency(tonic * octaveMul * detune);
-    myEffectRhodes2.amplitude(ampPerOsc);
+    myEffect1b.begin(WAVEFORM_SAWTOOTH);
+    myEffect1b.frequency(tonic * octaveMul * stringsDetune);
+    myEffect1b.amplitude(ampPerOsc);
 
-    // Third voice (2 sawtooth oscillators)
+    // Third voice
     myEffect2.begin(WAVEFORM_SAWTOOTH);
     myEffect2.frequency(tonic * third * octaveMul);
     myEffect2.amplitude(ampPerOsc);
-    myEffect2Rhodes2.begin(WAVEFORM_SAWTOOTH);
-    myEffect2Rhodes2.frequency(tonic * third * octaveMul * detune);
-    myEffect2Rhodes2.amplitude(ampPerOsc);
+    myEffect2b.begin(WAVEFORM_SAWTOOTH);
+    myEffect2b.frequency(tonic * third * octaveMul * stringsDetune);
+    myEffect2b.amplitude(ampPerOsc);
 
-    // Fifth voice (2 sawtooth oscillators)
+    // Fifth voice
     myEffect3.begin(WAVEFORM_SAWTOOTH);
     myEffect3.frequency(tonic * fifth * octaveMul);
     myEffect3.amplitude(ampPerOsc);
-    myEffect3Rhodes2.begin(WAVEFORM_SAWTOOTH);
-    myEffect3Rhodes2.frequency(tonic * fifth * octaveMul * detune);
-    myEffect3Rhodes2.amplitude(ampPerOsc);
+    myEffect3b.begin(WAVEFORM_SAWTOOTH);
+    myEffect3b.frequency(tonic * fifth * octaveMul * stringsDetune);
+    myEffect3b.amplitude(ampPerOsc);
 }
 
 void startChord(float potNorm, float tonicFreq, int keyNote, int mode)
 {
     // choose tonic: passed in or last detected
     float tonic = (tonicFreq > 1.0f) ? tonicFreq : lastDetectedFrequency;
+    bool hasValidPitch = (tonic > 0.0f);
+    
     if (tonic <= 0.0f)
-        tonic = 440.0f; // fallback to A4
+        tonic = 440.0f; // fallback to A4 for frequency calculation only
 
     currentChordTonic = tonic;
     // clear suppression when starting chord explicitly
@@ -400,8 +348,8 @@ void startChord(float potNorm, float tonicFreq, int keyNote, int mode)
     // apply octave shift
     float octaveMul = powf(2.0f, (float)currentOctaveShift);
 
-    // distribute amplitude to avoid clipping (sum ~= potNorm)
-    float perVoice = potNorm / 3.0f;
+    // If no valid pitch detected yet, start silent (amplitude will be set when pitch is detected)
+    float perVoice = hasValidPitch ? (potNorm / 3.0f) : 0.0f;
 
     // Initialize sound based on currentSynthSound selection
     if (currentSynthSound == 1) // Organ
@@ -423,18 +371,25 @@ void startChord(float potNorm, float tonicFreq, int keyNote, int mode)
 
     if (!chordActive)
     {
-        Serial.println(">>> CHORD START at tonic " + String(tonic) + "Hz vol " + String(potNorm));
+        if (hasValidPitch)
+        {
+            Serial.println(">>> CHORD START at tonic " + String(tonic) + "Hz vol " + String(potNorm));
+        }
+        else
+        {
+            Serial.println(">>> CHORD START (waiting for pitch detection)");
+        }
     }
     digitalWrite(LED_BUILTIN, HIGH);
 
-    beepAmp = potNorm;
+    beepAmp = hasValidPitch ? potNorm : 0.0f;
     chordActive = true;
 
     // Reset arpeggiator state when starting chord
     arpCurrentStep = 0;
 
-    // Start arp timer if in arp mode
-    if (currentArpMode == 0)
+    // Start arp timer if in arp mode (only if we have valid pitch)
+    if (currentArpMode == 0 && hasValidPitch)
     {
         startArpTimer();
     }
@@ -444,6 +399,9 @@ void updateChordTonic(float tonicFreq, int keyNote, int mode)
 {
     if (!chordActive || tonicFreq <= 0.0f)
         return;
+
+    // Check if we're transitioning from silent start to having valid pitch
+    bool wasWaitingForPitch = (beepAmp <= 0.0f);
 
     currentChordTonic = tonicFreq;
 
@@ -463,42 +421,29 @@ void updateChordTonic(float tonicFreq, int keyNote, int mode)
         organBaseFifthFreq = tonicFreq * fifth * octaveMul;
 
         myEffect.frequency(organBaseRootFreq);
-        myEffectOrg2.frequency(organBaseRootFreq * organDetune1);
-        myEffectOrg3.frequency(organBaseRootFreq * organDetune2);
-
+        myEffect1b.frequency(organBaseRootFreq * organDetune);
         myEffect2.frequency(organBaseThirdFreq);
-        myEffect2Org2.frequency(organBaseThirdFreq * organDetune1);
-        myEffect2Org3.frequency(organBaseThirdFreq * organDetune2);
-
+        myEffect2b.frequency(organBaseThirdFreq * organDetune);
         myEffect3.frequency(organBaseFifthFreq);
-        myEffect3Org2.frequency(organBaseFifthFreq * organDetune1);
-        myEffect3Org3.frequency(organBaseFifthFreq * organDetune2);
+        myEffect3b.frequency(organBaseFifthFreq * organDetune);
     }
     else if (currentSynthSound == 2) // Rhodes
     {
-        float detune = 1.0015f;
-
         myEffect.frequency(tonicFreq * octaveMul);
-        myEffectRhodes2.frequency(tonicFreq * octaveMul * detune);
-
+        myEffect1b.frequency(tonicFreq * octaveMul * rhodesDetune);
         myEffect2.frequency(tonicFreq * third * octaveMul);
-        myEffect2Rhodes2.frequency(tonicFreq * third * octaveMul * detune);
-
+        myEffect2b.frequency(tonicFreq * third * octaveMul * rhodesDetune);
         myEffect3.frequency(tonicFreq * fifth * octaveMul);
-        myEffect3Rhodes2.frequency(tonicFreq * fifth * octaveMul * detune);
+        myEffect3b.frequency(tonicFreq * fifth * octaveMul * rhodesDetune);
     }
     else if (currentSynthSound == 3) // Strings
     {
-        float detune = 1.004f;
-
         myEffect.frequency(tonicFreq * octaveMul);
-        myEffectRhodes2.frequency(tonicFreq * octaveMul * detune);
-
+        myEffect1b.frequency(tonicFreq * octaveMul * stringsDetune);
         myEffect2.frequency(tonicFreq * third * octaveMul);
-        myEffect2Rhodes2.frequency(tonicFreq * third * octaveMul * detune);
-
+        myEffect2b.frequency(tonicFreq * third * octaveMul * stringsDetune);
         myEffect3.frequency(tonicFreq * fifth * octaveMul);
-        myEffect3Rhodes2.frequency(tonicFreq * fifth * octaveMul * detune);
+        myEffect3b.frequency(tonicFreq * fifth * octaveMul * stringsDetune);
     }
     else // Sine
     {
@@ -507,7 +452,16 @@ void updateChordTonic(float tonicFreq, int keyNote, int mode)
         myEffect3.frequency(tonicFreq * fifth * octaveMul);
     }
 
-    Serial.println(">>> CHORD UPDATE tonic " + String(tonicFreq) + "Hz");
+    // If we were waiting for pitch detection and now have it, start arpeggiator if needed
+    if (wasWaitingForPitch)
+    {
+        Serial.println(">>> PITCH DETECTED, chord now active at " + String(tonicFreq) + "Hz");
+        // Arpeggiator will be started by updateArpeggiator() in main loop if in arp mode
+    }
+    else
+    {
+        Serial.println(">>> CHORD UPDATE tonic " + String(tonicFreq) + "Hz");
+    }
 }
 
 // Periodic vibrato update: called from main loop
@@ -522,18 +476,13 @@ void updateVibrato()
     float lfo = sinf(TWO_PI * organVibratoRate * t);
     float mult = 1.0f + lfo * organVibratoDepth;
 
-    // Apply vibrato to each voice (root, third, fifth) and their detuned companions
+    // Apply vibrato to each voice and their detuned companions
     myEffect.frequency(organBaseRootFreq * mult);
-    myEffectOrg2.frequency(organBaseRootFreq * mult * organDetune1);
-    myEffectOrg3.frequency(organBaseRootFreq * mult * organDetune2);
-
+    myEffect1b.frequency(organBaseRootFreq * mult * organDetune);
     myEffect2.frequency(organBaseThirdFreq * mult);
-    myEffect2Org2.frequency(organBaseThirdFreq * mult * organDetune1);
-    myEffect2Org3.frequency(organBaseThirdFreq * mult * organDetune2);
-
+    myEffect2b.frequency(organBaseThirdFreq * mult * organDetune);
     myEffect3.frequency(organBaseFifthFreq * mult);
-    myEffect3Org2.frequency(organBaseFifthFreq * mult * organDetune1);
-    myEffect3Org3.frequency(organBaseFifthFreq * mult * organDetune2);
+    myEffect3b.frequency(organBaseFifthFreq * mult * organDetune);
 }
 
 void startRhodesDecay()
@@ -556,13 +505,9 @@ void updateRhodesDecay()
     unsigned long elapsed = nowMs - rhodesDecayStartMs;
 
     if (elapsed >= rhodesDecayDurationMs)
-    { // Decay complete: silence Rhodes oscillators
-        myEffect.amplitude(0);
-        myEffectRhodes2.amplitude(0);
-        myEffect2.amplitude(0);
-        myEffect2Rhodes2.amplitude(0);
-        myEffect3.amplitude(0);
-        myEffect3Rhodes2.amplitude(0);
+    {
+        // Decay complete: silence oscillators
+        stopAllOscillators();
         rhodesDecaying = false;
         chordActive = false;
         chordSuppressed = true;
@@ -571,21 +516,20 @@ void updateRhodesDecay()
     }
     else
     {
-        // Apply exponential decay curve for natural piano-like envelope
+        // Apply linear decay curve
         float t = (float)elapsed / (float)rhodesDecayDurationMs; // 0..1
         float curAmp = rhodesDecayStartAmp * (1.0f - t);
 
-        // Rhodes uses 2 oscillators per voice with 65/35 split
         float perVoice = curAmp / 3.0f;
         float mainAmp = perVoice * 0.65f;
         float companionAmp = perVoice * 0.35f;
 
         myEffect.amplitude(mainAmp);
-        myEffectRhodes2.amplitude(companionAmp);
+        myEffect1b.amplitude(companionAmp);
         myEffect2.amplitude(mainAmp);
-        myEffect2Rhodes2.amplitude(companionAmp);
+        myEffect2b.amplitude(companionAmp);
         myEffect3.amplitude(mainAmp);
-        myEffect3Rhodes2.amplitude(companionAmp);
+        myEffect3b.amplitude(companionAmp);
 
         beepAmp = curAmp;
     }
@@ -628,45 +572,39 @@ void updateChordVolume(float potNorm)
 {
     if (chordActive || chordFading)
     {
-        // If we're NOT currently fading, apply pot-based amplitude immediately.
-        // While a fade is in progress, do not reset the fade start time or start amp,
-        // otherwise the fade will never progress.
         if (!chordFading)
         {
             // Apply volume based on current sound
             if (currentSynthSound == 1) // Organ
             {
-                float ampPerOsc = potNorm / 9.0f;
+                float ampPerOsc = potNorm / 6.0f; // 6 total oscillators
                 myEffect.amplitude(ampPerOsc);
-                myEffectOrg2.amplitude(ampPerOsc);
-                myEffectOrg3.amplitude(ampPerOsc);
+                myEffect1b.amplitude(ampPerOsc);
                 myEffect2.amplitude(ampPerOsc);
-                myEffect2Org2.amplitude(ampPerOsc);
-                myEffect2Org3.amplitude(ampPerOsc);
+                myEffect2b.amplitude(ampPerOsc);
                 myEffect3.amplitude(ampPerOsc);
-                myEffect3Org2.amplitude(ampPerOsc);
-                myEffect3Org3.amplitude(ampPerOsc);
+                myEffect3b.amplitude(ampPerOsc);
             }
             else if (currentSynthSound == 2) // Rhodes
             {
                 float mainAmp = potNorm / 3.0f * 0.65f;
                 float companionAmp = potNorm / 3.0f * 0.35f;
                 myEffect.amplitude(mainAmp);
-                myEffectRhodes2.amplitude(companionAmp);
+                myEffect1b.amplitude(companionAmp);
                 myEffect2.amplitude(mainAmp);
-                myEffect2Rhodes2.amplitude(companionAmp);
+                myEffect2b.amplitude(companionAmp);
                 myEffect3.amplitude(mainAmp);
-                myEffect3Rhodes2.amplitude(companionAmp);
+                myEffect3b.amplitude(companionAmp);
             }
             else if (currentSynthSound == 3) // Strings
             {
                 float ampPerOsc = potNorm / 6.0f; // 6 total oscillators
                 myEffect.amplitude(ampPerOsc);
-                myEffectRhodes2.amplitude(ampPerOsc);
+                myEffect1b.amplitude(ampPerOsc);
                 myEffect2.amplitude(ampPerOsc);
-                myEffect2Rhodes2.amplitude(ampPerOsc);
+                myEffect2b.amplitude(ampPerOsc);
                 myEffect3.amplitude(ampPerOsc);
-                myEffect3Rhodes2.amplitude(ampPerOsc);
+                myEffect3b.amplitude(ampPerOsc);
             }
             else // Sine
             {
@@ -675,7 +613,6 @@ void updateChordVolume(float potNorm)
                 myEffect2.amplitude(perVoice);
                 myEffect3.amplitude(perVoice);
             }
-            // Update overall stored amplitude
             beepAmp = potNorm;
         }
     }
@@ -689,7 +626,7 @@ void updateChordFade()
         unsigned long elapsed = nowMs - chordFadeStartMs;
         if (elapsed >= chordFadeDurationMs)
         {
-            // Fade complete: ensure amplitudes are zero and mark stopped
+            // Fade complete
             stopAllOscillators();
             digitalWrite(LED_BUILTIN, LOW);
             chordFading = false;
@@ -706,16 +643,13 @@ void updateChordFade()
             // Calculate per-oscillator amplitude based on current sound
             if (currentSynthSound == 1) // Organ
             {
-                float ampPerOsc = curAmp / 9.0f; // 9 total oscillators
+                float ampPerOsc = curAmp / 6.0f;
                 myEffect.amplitude(ampPerOsc);
-                myEffectOrg2.amplitude(ampPerOsc);
-                myEffectOrg3.amplitude(ampPerOsc);
+                myEffect1b.amplitude(ampPerOsc);
                 myEffect2.amplitude(ampPerOsc);
-                myEffect2Org2.amplitude(ampPerOsc);
-                myEffect2Org3.amplitude(ampPerOsc);
+                myEffect2b.amplitude(ampPerOsc);
                 myEffect3.amplitude(ampPerOsc);
-                myEffect3Org2.amplitude(ampPerOsc);
-                myEffect3Org3.amplitude(ampPerOsc);
+                myEffect3b.amplitude(ampPerOsc);
             }
             else if (currentSynthSound == 2) // Rhodes
             {
@@ -723,21 +657,21 @@ void updateChordFade()
                 float mainAmp = perVoice * 0.65f;
                 float companionAmp = perVoice * 0.35f;
                 myEffect.amplitude(mainAmp);
-                myEffectRhodes2.amplitude(companionAmp);
+                myEffect1b.amplitude(companionAmp);
                 myEffect2.amplitude(mainAmp);
-                myEffect2Rhodes2.amplitude(companionAmp);
+                myEffect2b.amplitude(companionAmp);
                 myEffect3.amplitude(mainAmp);
-                myEffect3Rhodes2.amplitude(companionAmp);
+                myEffect3b.amplitude(companionAmp);
             }
             else if (currentSynthSound == 3) // Strings
             {
-                float ampPerOsc = curAmp / 6.0f; // 6 total oscillators
+                float ampPerOsc = curAmp / 6.0f;
                 myEffect.amplitude(ampPerOsc);
-                myEffectRhodes2.amplitude(ampPerOsc);
+                myEffect1b.amplitude(ampPerOsc);
                 myEffect2.amplitude(ampPerOsc);
-                myEffect2Rhodes2.amplitude(ampPerOsc);
+                myEffect2b.amplitude(ampPerOsc);
                 myEffect3.amplitude(ampPerOsc);
-                myEffect3Rhodes2.amplitude(ampPerOsc);
+                myEffect3b.amplitude(ampPerOsc);
             }
             else // Sine
             {
@@ -754,18 +688,17 @@ void updateChordFade()
 void setupAudio()
 {
     // Allocate audio memory
-    AudioMemory(128);
+    AudioMemory(64); // Reduced from 128 since we have fewer objects
     Serial.println("Audio memory allocated");
 
-    // Initialize audio shield FIRST - only call enable() ONCE
+    // Initialize audio shield
     if (audioShield.enable())
     {
         Serial.println("Audio Shield enabled");
         audioShieldEnabled = true;
 
-        // Configure audio input - use lineIn for external audio sources
         audioShield.inputSelect(AUDIO_INPUT_LINEIN);
-        audioShield.lineInLevel(10); // 0-15, where 5 is 1.33Vp-p, 10 is 0.63Vp-p
+        audioShield.lineInLevel(10);
         Serial.println("Audio input configured: LINE IN, level 10");
     }
     else
@@ -777,68 +710,42 @@ void setupAudio()
     audioShield.volume(0.5);
     Serial.println("Init Beep @ 0.5 volume");
 
-    // Initialize waveforms
+    // Initialize all 6 oscillators
     myEffect.begin(WAVEFORM_SINE);
     myEffect.frequency(1000);
     myEffect.amplitude(0);
+
+    myEffect1b.begin(WAVEFORM_SINE);
+    myEffect1b.frequency(1000);
+    myEffect1b.amplitude(0);
 
     myEffect2.begin(WAVEFORM_SINE);
     myEffect2.frequency(1000);
     myEffect2.amplitude(0);
 
+    myEffect2b.begin(WAVEFORM_SINE);
+    myEffect2b.frequency(1000);
+    myEffect2b.amplitude(0);
+
     myEffect3.begin(WAVEFORM_SINE);
     myEffect3.frequency(1000);
     myEffect3.amplitude(0);
 
-    // Initialize organ sound oscillators
-    myEffectOrg2.begin(WAVEFORM_SINE);
-    myEffectOrg2.frequency(1000);
-    myEffectOrg2.amplitude(0);
+    myEffect3b.begin(WAVEFORM_SINE);
+    myEffect3b.frequency(1000);
+    myEffect3b.amplitude(0);
 
-    myEffectOrg3.begin(WAVEFORM_SINE);
-    myEffectOrg3.frequency(1000);
-    myEffectOrg3.amplitude(0);
+    Serial.println("Waveforms initialized (6 oscillators total)");
 
-    myEffect2Org2.begin(WAVEFORM_SINE);
-    myEffect2Org2.frequency(1000);
-    myEffect2Org2.amplitude(0);
-
-    myEffect2Org3.begin(WAVEFORM_SINE);
-    myEffect2Org3.frequency(1000);
-    myEffect2Org3.amplitude(0);
-
-    myEffect3Org2.begin(WAVEFORM_SINE);
-    myEffect3Org2.frequency(1000);
-    myEffect3Org2.amplitude(0);
-
-    myEffect3Org3.begin(WAVEFORM_SINE);
-    myEffect3Org3.frequency(1000);
-    myEffect3Org3.amplitude(0);
-
-    // Initialize Rhodes and Strings oscillators
-    myEffectRhodes2.begin(WAVEFORM_SINE);
-    myEffectRhodes2.frequency(1000);
-    myEffectRhodes2.amplitude(0);
-
-    myEffect2Rhodes2.begin(WAVEFORM_SINE);
-    myEffect2Rhodes2.frequency(1000);
-    myEffect2Rhodes2.amplitude(0);
-
-    myEffect3Rhodes2.begin(WAVEFORM_SINE);
-    myEffect3Rhodes2.frequency(1000);
-    myEffect3Rhodes2.amplitude(0);
-
-    Serial.println("Waveforms initialized (12 oscillators total for all synth sounds)");
-
-// Configure mixers
+    // Configure mixers
 #define BOOST_INPUT_GAIN false
     float inputGain = BOOST_INPUT_GAIN ? 1.5 : 1.0;
     float synthGain = 0.2;
 
-    mixerLeft.gain(0, inputGain); // input left
-    mixerLeft.gain(1, synthGain); // synth root
-    mixerLeft.gain(2, synthGain); // synth 3rd
-    mixerLeft.gain(3, synthGain); // synth 5th
+    mixerLeft.gain(0, inputGain);  // input left
+    mixerLeft.gain(1, synthGain);  // synth root
+    mixerLeft.gain(2, synthGain);  // synth 3rd
+    mixerLeft.gain(3, synthGain);  // synth 5th
 
     mixerRight.gain(0, inputGain); // input right
     mixerRight.gain(1, synthGain); // synth root
@@ -855,32 +762,13 @@ void setupAudio()
     reverb.roomsize(0.6f);
     reverb.damping(0.5f);
 
-    // Configure synth-only mixers
-    synthOnlyLeft.gain(0, 1.0f);
-    synthOnlyLeft.gain(1, 1.0f);
-    synthOnlyLeft.gain(2, 1.0f);
+    // Configure synth mixer (for reverb input)
+    synthMix.gain(0, 1.0f);
+    synthMix.gain(1, 1.0f);
+    synthMix.gain(2, 1.0f);
+    synthMix.gain(3, 0.0f); // unused
 
-    synthOnlyRight.gain(0, 1.0f);
-    synthOnlyRight.gain(1, 1.0f);
-    synthOnlyRight.gain(2, 1.0f);
-
-    // Configure voice sub-mixers (all gains at 1.0 to pass signals through)
-    voiceMix1.gain(0, 1.0f);
-    voiceMix1.gain(1, 1.0f);
-    voiceMix1.gain(2, 1.0f);
-    voiceMix1.gain(3, 1.0f);
-
-    voiceMix2.gain(0, 1.0f);
-    voiceMix2.gain(1, 1.0f);
-    voiceMix2.gain(2, 1.0f);
-    voiceMix2.gain(3, 1.0f);
-
-    voiceMix3.gain(0, 1.0f);
-    voiceMix3.gain(1, 1.0f);
-    voiceMix3.gain(2, 1.0f);
-    voiceMix3.gain(3, 1.0f);
-
-    Serial.println("Voice sub-mixers configured");
+    Serial.println("Synth mixer configured");
 
     // Startup beep
     Serial.println("Playing startup beep 100ms @ 0.7");
@@ -891,27 +779,19 @@ void setupAudio()
     Serial.println("Startup beep complete");
 }
 
-// Arpeggiator timer ISR - called at precise intervals for stable timing
+// Arpeggiator timer ISR
 void arpTimerISR()
 {
-    // Only process if chord is active and not fading
     if (!chordActive || chordFading)
         return;
 
     // Mute all voices first
-    mixerLeft.gain(1, 0.0f); // mute root
-    mixerLeft.gain(2, 0.0f); // mute third
-    mixerLeft.gain(3, 0.0f); // mute fifth
+    mixerLeft.gain(1, 0.0f);
+    mixerLeft.gain(2, 0.0f);
+    mixerLeft.gain(3, 0.0f);
     mixerRight.gain(1, 0.0f);
     mixerRight.gain(2, 0.0f);
     mixerRight.gain(3, 0.0f);
-
-    synthOnlyLeft.gain(0, 0.0f); // mute root
-    synthOnlyLeft.gain(1, 0.0f); // mute third
-    synthOnlyLeft.gain(2, 0.0f); // mute fifth
-    synthOnlyRight.gain(0, 0.0f);
-    synthOnlyRight.gain(1, 0.0f);
-    synthOnlyRight.gain(2, 0.0f);
 
     // Unmute only the current step voice
     float synthGain = 0.8f;
@@ -920,20 +800,14 @@ void arpTimerISR()
     case 0: // Root voice
         mixerLeft.gain(1, synthGain);
         mixerRight.gain(1, synthGain);
-        synthOnlyLeft.gain(0, 1.0f);
-        synthOnlyRight.gain(0, 1.0f);
         break;
     case 1: // Third voice
         mixerLeft.gain(2, synthGain);
         mixerRight.gain(2, synthGain);
-        synthOnlyLeft.gain(1, 1.0f);
-        synthOnlyRight.gain(1, 1.0f);
         break;
     case 2: // Fifth voice
         mixerLeft.gain(3, synthGain);
         mixerRight.gain(3, synthGain);
-        synthOnlyLeft.gain(2, 1.0f);
-        synthOnlyRight.gain(2, 1.0f);
         break;
     }
 
@@ -945,13 +819,11 @@ void arpTimerISR()
     }
 }
 
-// Start the arpeggiator timer
 void startArpTimer()
 {
     if (arpTimerActive)
         return;
 
-    // Convert milliseconds to microseconds for IntervalTimer
     unsigned long intervalUs = arpStepDurationMs * 1000;
     arpTimer.begin(arpTimerISR, intervalUs);
     arpTimerActive = true;
@@ -962,7 +834,6 @@ void startArpTimer()
     Serial.println("Arp timer started");
 }
 
-// Stop the arpeggiator timer
 void stopArpTimer()
 {
     if (!arpTimerActive)
@@ -971,7 +842,7 @@ void stopArpTimer()
     arpTimer.end();
     arpTimerActive = false;
 
-    // Restore normal voice levels when stopping
+    // Restore normal voice levels
     float synthGain = 0.8f;
     mixerLeft.gain(1, synthGain);
     mixerLeft.gain(2, synthGain);
@@ -979,23 +850,15 @@ void stopArpTimer()
     mixerRight.gain(1, synthGain);
     mixerRight.gain(2, synthGain);
     mixerRight.gain(3, synthGain);
-    synthOnlyLeft.gain(0, 1.0f);
-    synthOnlyLeft.gain(1, 1.0f);
-    synthOnlyLeft.gain(2, 1.0f);
-    synthOnlyRight.gain(0, 1.0f);
-    synthOnlyRight.gain(1, 1.0f);
-    synthOnlyRight.gain(2, 1.0f);
 
     Serial.println("Arp timer stopped");
 }
 
-// Update the arpeggiator timer interval (call when tempo changes)
 void updateArpTimerInterval()
 {
     if (!arpTimerActive)
         return;
 
-    // Stop and restart with new interval
     arpTimer.end();
     unsigned long intervalUs = arpStepDurationMs * 1000;
     arpTimer.begin(arpTimerISR, intervalUs);
@@ -1007,10 +870,6 @@ void updateArpTimerInterval()
 
 void updateArpeggiator()
 {
-    // This function is now called from main loop primarily for mode management,
-    // not timing. The actual timing is handled by arpTimerISR.
-
-    // If chord is not active or is fading, ensure timer is stopped
     if (!chordActive || chordFading)
     {
         if (arpTimerActive)
@@ -1020,19 +879,16 @@ void updateArpeggiator()
         return;
     }
 
-    // Handle mode transitions
     if (currentArpMode == 0) // Arp mode
     {
-        // Start timer if not already running
         if (!arpTimerActive)
         {
             arpCurrentStep = 0;
             startArpTimer();
         }
     }
-    else // Poly mode (1)
+    else // Poly mode
     {
-        // Stop timer if running and restore normal voice levels
         if (arpTimerActive)
         {
             stopArpTimer();
@@ -1046,11 +902,5 @@ void updateArpeggiator()
         mixerRight.gain(1, synthGain);
         mixerRight.gain(2, synthGain);
         mixerRight.gain(3, synthGain);
-        synthOnlyLeft.gain(0, 1.0f);
-        synthOnlyLeft.gain(1, 1.0f);
-        synthOnlyLeft.gain(2, 1.0f);
-        synthOnlyRight.gain(0, 1.0f);
-        synthOnlyRight.gain(1, 1.0f);
-        synthOnlyRight.gain(2, 1.0f);
     }
 }

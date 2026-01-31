@@ -4,21 +4,14 @@
 #include <Arduino.h>
 #include <Audio.h>
 
-// Audio objects
-extern AudioSynthWaveform myEffect;
-extern AudioSynthWaveform myEffect2;
-extern AudioSynthWaveform myEffect3;
-// Additional oscillators for organ sound (3 per voice)
-extern AudioSynthWaveform myEffectOrg2;
-extern AudioSynthWaveform myEffectOrg3;
-extern AudioSynthWaveform myEffect2Org2;
-extern AudioSynthWaveform myEffect2Org3;
-extern AudioSynthWaveform myEffect3Org2;
-extern AudioSynthWaveform myEffect3Org3;
-// Additional oscillators for Rhodes and Strings (2 per voice)
-extern AudioSynthWaveform myEffectRhodes2;
-extern AudioSynthWaveform myEffect2Rhodes2;
-extern AudioSynthWaveform myEffect3Rhodes2;
+// Audio objects - Simplified: 2 oscillators per voice (primary + detuned)
+extern AudioSynthWaveform myEffect;   // root voice primary
+extern AudioSynthWaveform myEffect1b; // root voice detuned
+extern AudioSynthWaveform myEffect2;  // third voice primary
+extern AudioSynthWaveform myEffect2b; // third voice detuned
+extern AudioSynthWaveform myEffect3;  // fifth voice primary
+extern AudioSynthWaveform myEffect3b; // fifth voice detuned
+
 extern AudioInputI2S audioInput;
 extern AudioOutputI2S audioOutput;
 extern AudioMixer4 mixerLeft;
@@ -27,12 +20,7 @@ extern AudioAnalyzePeak peak1;
 extern AudioEffectFreeverb reverb;
 extern AudioMixer4 wetDryLeft;
 extern AudioMixer4 wetDryRight;
-extern AudioMixer4 synthOnlyLeft;
-extern AudioMixer4 synthOnlyRight;
-// Sub-mixers to combine multiple oscillators per voice
-extern AudioMixer4 voiceMix1; // combines all root voice oscillators
-extern AudioMixer4 voiceMix2; // combines all third voice oscillators
-extern AudioMixer4 voiceMix3; // combines all fifth voice oscillators
+extern AudioMixer4 synthMix; // combines synth oscillators for reverb
 extern AudioControlSGTL5000 audioShield;
 
 // Audio state
