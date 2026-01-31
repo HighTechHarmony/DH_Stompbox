@@ -4,6 +4,7 @@
 #include "audio.h"
 #include "NVRAM.h"
 #include <Wire.h>
+#include <math.h>
 
 // OLED Setup
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
@@ -574,23 +575,39 @@ void renderVolumeControlScreen(float volumeLevel)
     display.setTextColor(SSD1306_WHITE);
     display.println("FS VOLUME CONTROL");
 
-    // Display volume percentage
-    int volumePercent = (int)(volumeLevel * 100.0f);
+    // Display volume percentage using a logarithmic (dB) mapping so
+    // displayed percent better matches perceived loudness.
+    // Map linear amplitude (0..1) -> dB (minDb..0) -> percent (0..100)
+    const float minDb = -60.0f; // floor for lowest visible volume
+    int volumePercent = 0;
+    if (volumeLevel <= 0.000001f)
+    {
+        volumePercent = 0;
+    }
+    else
+    {
+        float db = 20.0f * log10f(volumeLevel);
+        if (db < minDb)
+            db = minDb;
+        float pct = (db - minDb) / (-minDb) * 100.0f; // 0..100
+        volumePercent = (int)(pct + 0.5f);
+    }
+
     display.setCursor(0, 12);
     display.setTextSize(2);
     display.print(volumePercent);
     display.print("%");
 
-    // Draw volume bar graph (similar to fade screen but inverted logic)
-    // Bar fills from left to right based on volume level
+    // Draw volume bar graph using the same percent so the bar matches the
+    // displayed percentage (perceived/logarithmic scale).
     int barY = 35;
     int barHeight = 20;
-    int barWidth = (int)(volumeLevel * (float)SCREEN_WIDTH);
-    
+    int barWidth = (int)((volumePercent / 100.0f) * (float)SCREEN_WIDTH);
+
     // Draw outline
     display.drawRect(0, barY, SCREEN_WIDTH, barHeight, SSD1306_WHITE);
-    
-    // Fill bar based on volume level
+
+    // Fill bar based on percentage
     if (barWidth > 2)
     {
         display.fillRect(1, barY + 1, barWidth - 1, barHeight - 2, SSD1306_WHITE);

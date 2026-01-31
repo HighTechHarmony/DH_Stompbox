@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <math.h>
 #include "config.h"
 #include "NVRAM.h"
 #include "input.h"
@@ -63,27 +64,33 @@ void loop()
     int potRaw = analogRead(POT_PIN);
     float potNorm = potRaw / 1023.0;
 
-    // Detect pot rotation to override FS volume control
+    // Track pot and show volume display when user adjusts pot (do NOT enter FS volume mode)
     if (lastPotRaw == -1)
     {
         lastPotRaw = potRaw; // Initialize on first loop
     }
 
-    // If using FS-controlled volume and pot has moved significantly, switch back to pot control
-    if (useFsControlledVolume && abs(potRaw - lastPotRaw) > 10) // ~1% threshold
+    if (abs(potRaw - lastPotRaw) > 10) // ~1% threshold
     {
-        useFsControlledVolume = false;
-        if (fsVolumeControlActive)
+        // If we were using FS-controlled volume, revert back to pot control
+        if (useFsControlledVolume)
         {
-            fsVolumeControlActive = false;
-            fsVolumeExitArmed = false;
-            currentScreen = SCREEN_HOME;
+            useFsControlledVolume = false;
+            if (fsVolumeControlActive)
+            {
+                fsVolumeControlActive = false;
+                fsVolumeExitArmed = false;
+            }
+            Serial.println("FS volume control overridden by pot");
         }
+
+        // Show the volume-control display and reset the idle timer.
+        // NOTE: we do NOT set fsVolumeControlActive or useFsControlledVolume here.
+        currentScreen = SCREEN_VOLUME_CONTROL;
+        lastFsVolumeActivityMs = now;
         lastPotRaw = potRaw;
-        Serial.println("FS volume control overridden by pot");
     }
-    // If not using FS volume, track pot changes normally
-    if (!useFsControlledVolume)
+    else if (!useFsControlledVolume)
     {
         lastPotRaw = potRaw;
     }
@@ -186,31 +193,66 @@ void loop()
             }
             else
             {
-                // Handle FS1 press (decrement volume)
+                // Handle FS1 press (decrement volume) - operate in dB space so
+                // steps correspond to the logarithmic display. Each FS step
+                // moves ~15 percentage points on the displayed scale -> that's
+                // (15% of 60 dB) = 9 dB per step when minDb=-60.
+                const float minDb = -60.0f;
+                const float dbStep = 9.0f; // corresponds to ~15% displayed
+
                 if (fs1_raw && !prevFs1)
                 {
-                    fsControlledVolume -= 0.15f; // Decrement by 15%
-                    if (fsControlledVolume < 0.0f)
-                        fsControlledVolume = 0.0f;
+                    // convert current linear volume to dB
+                    float curDb;
+                    if (fsControlledVolume <= 0.000001f)
+                        curDb = minDb;
+                    else
+                        curDb = 20.0f * log10f(fsControlledVolume);
+
+                    curDb -= dbStep;
+                    if (curDb < minDb)
+                        curDb = minDb;
+
+                    fsControlledVolume = powf(10.0f, curDb / 20.0f);
                     lastFsVolumeActivityMs = now;
                     updateChordVolume(fsControlledVolume);
+
+                    // Show logged percent in serial to match display
+                    float pct = (curDb - minDb) / (-minDb) * 100.0f;
                     Serial.print("FS volume decreased to: ");
-                    Serial.println(fsControlledVolume * 100.0f);
+                    Serial.println((int)(pct + 0.5f));
                 }
 
                 // Handle FS2 press (increment volume)
                 if (fs2 && !prevFs2)
                 {
-                    fsControlledVolume += 0.15f; // Increment by 15%
-                    if (fsControlledVolume > 1.0f)
-                        fsControlledVolume = 1.0f;
+                    float curDb;
+                    if (fsControlledVolume <= 0.000001f)
+                        curDb = minDb;
+                    else
+                        curDb = 20.0f * log10f(fsControlledVolume);
+
+                    curDb += dbStep;
+                    if (curDb > 0.0f)
+                        curDb = 0.0f;
+
+                    fsControlledVolume = powf(10.0f, curDb / 20.0f);
                     lastFsVolumeActivityMs = now;
                     updateChordVolume(fsControlledVolume);
+
+                    float pct = (curDb - minDb) / (-minDb) * 100.0f;
                     Serial.print("FS volume increased to: ");
-                    Serial.println(fsControlledVolume * 100.0f);
+                    Serial.println((int)(pct + 0.5f));
                 }
             }
         }
+    }
+
+    // Pot-driven volume display timeout (only when not in FS volume mode)
+    if (!fsVolumeControlActive && currentScreen == SCREEN_VOLUME_CONTROL && (now - lastFsVolumeActivityMs) > FS_VOLUME_TIMEOUT_MS)
+    {
+        currentScreen = SCREEN_HOME;
+        Serial.println("Volume display timeout (pot)");
     }
 
     // On raw press-edge, ensure FS1 remains true for at least the minimum window
@@ -218,6 +260,14 @@ void loop()
     {
         fs1ForcedUntilMs = now + FS1_MIN_ACTIVATION_MS;
     }
+
+    // Pot-driven volume display timeout (only when not in FS volume mode)
+    if (!fsVolumeControlActive && currentScreen == SCREEN_VOLUME_CONTROL && (now - lastFsVolumeActivityMs) > FS_VOLUME_TIMEOUT_MS)
+    {
+        currentScreen = SCREEN_HOME;
+        Serial.println("Volume display timeout (pot)");
+    }
+
 
     // Effective FS1 seen by the rest of the loop (remains true for short taps)
     bool fs1 = fs1_raw || (now < fs1ForcedUntilMs);
@@ -454,7 +504,7 @@ void loop()
     }
     else if (currentScreen == SCREEN_VOLUME_CONTROL)
     {
-        renderVolumeControlScreen(fsControlledVolume);
+        renderVolumeControlScreen(effectiveVolume);
     }
     else if (currentScreen == SCREEN_TAP_TEMPO)
     {
@@ -468,3 +518,4 @@ void loop()
 
     delay(50);
 }
+
