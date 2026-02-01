@@ -566,6 +566,55 @@ void renderMenuScreen()
                 display.println("^");
         }
     }
+    else if (currentMenuLevel == MENU_OUTPUT_SELECT)
+    {
+        // Output selection submenu - show "Output" as title
+        display.setCursor(0, 0);
+        display.println("Output");
+
+        int totalCount = OUTPUT_MENU_COUNT + 1; // includes Parent
+        int visible = 3;
+
+        // Stable viewport scrolling
+        if (menuOutputIndex < outputViewportStart)
+        {
+            outputViewportStart = menuOutputIndex;
+        }
+        else if (menuOutputIndex >= outputViewportStart + visible)
+        {
+            outputViewportStart = menuOutputIndex - visible + 1;
+        }
+
+        if (outputViewportStart < 0)
+            outputViewportStart = 0;
+        if (outputViewportStart > totalCount - visible)
+            outputViewportStart = totalCount - visible;
+        if (outputViewportStart < 0)
+            outputViewportStart = 0;
+
+        for (int i = 0; i < visible; i++)
+        {
+            int idx = outputViewportStart + i;
+            if (idx >= totalCount)
+                break;
+
+            int y = 18 + i * 18;
+            display.setCursor(0, y);
+            if (idx == menuOutputIndex)
+            {
+                display.print("> ");
+            }
+            else
+            {
+                display.print("  ");
+            }
+
+            if (idx < OUTPUT_MENU_COUNT)
+                display.println(outputMenuNames[idx]);
+            else
+                display.println("^");
+        }
+    }
 
     display.display();
 }

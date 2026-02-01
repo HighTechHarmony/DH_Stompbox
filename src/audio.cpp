@@ -172,6 +172,36 @@ float getDiatonicThird(float noteFreq, int keyNote, int mode)
     return powf(2.0f, thirdSemitones / 12.0f);
 }
 
+void restoreMixerGains(float synthGain)
+{
+    // Restore mixer gains respecting the current output mode
+    // In split mode: Left = guitar only, Right = synth only
+    // In mix mode: Both channels have guitar + synth
+    
+    if (currentOutputMode == 1) // Split mode
+    {
+        // Left channel: guitar only (no synth)
+        mixerLeft.gain(1, 0.0f);
+        mixerLeft.gain(2, 0.0f);
+        mixerLeft.gain(3, 0.0f);
+        
+        // Right channel: synth only
+        mixerRight.gain(1, synthGain);
+        mixerRight.gain(2, synthGain);
+        mixerRight.gain(3, synthGain);
+    }
+    else // Mix mode
+    {
+        // Both channels: synth
+        mixerLeft.gain(1, synthGain);
+        mixerLeft.gain(2, synthGain);
+        mixerLeft.gain(3, synthGain);
+        mixerRight.gain(1, synthGain);
+        mixerRight.gain(2, synthGain);
+        mixerRight.gain(3, synthGain);
+    }
+}
+
 void stopAllOscillators()
 {
     myEffect.amplitude(0);
@@ -182,13 +212,7 @@ void stopAllOscillators()
     myEffect3b.amplitude(0);
 
     // Restore mixer gains to normal when stopping (in case arp mode left them muted)
-    float synthGain = 0.8f;
-    mixerLeft.gain(1, synthGain);
-    mixerLeft.gain(2, synthGain);
-    mixerLeft.gain(3, synthGain);
-    mixerRight.gain(1, synthGain);
-    mixerRight.gain(2, synthGain);
-    mixerRight.gain(3, synthGain);
+    restoreMixerGains(0.8f);
 }
 
 void initSineSound(float tonic, float third, float fifth, float octaveMul, float perVoice)
@@ -770,6 +794,9 @@ void setupAudio()
 
     Serial.println("Synth mixer configured");
 
+    // Apply output mode (Mix vs Split) from NVRAM
+    applyOutputMode();
+
     // Startup beep
     Serial.println("Playing startup beep 100ms @ 0.7");
     myEffect.frequency(1000);
@@ -785,7 +812,8 @@ void arpTimerISR()
     if (!chordActive || chordFading)
         return;
 
-    // Mute all voices first
+    // Mute all synth voices first
+    // Note: In split mode, only right channel has synth (left has guitar)
     mixerLeft.gain(1, 0.0f);
     mixerLeft.gain(2, 0.0f);
     mixerLeft.gain(3, 0.0f);
@@ -795,18 +823,24 @@ void arpTimerISR()
 
     // Unmute only the current step voice
     float synthGain = 0.8f;
+    
+    // In split mode, synth is only on right channel
+    // In mix mode, synth is on both channels
     switch (arpCurrentStep)
     {
     case 0: // Root voice
-        mixerLeft.gain(1, synthGain);
+        if (currentOutputMode == 0) // Mix mode
+            mixerLeft.gain(1, synthGain);
         mixerRight.gain(1, synthGain);
         break;
     case 1: // Third voice
-        mixerLeft.gain(2, synthGain);
+        if (currentOutputMode == 0) // Mix mode
+            mixerLeft.gain(2, synthGain);
         mixerRight.gain(2, synthGain);
         break;
     case 2: // Fifth voice
-        mixerLeft.gain(3, synthGain);
+        if (currentOutputMode == 0) // Mix mode
+            mixerLeft.gain(3, synthGain);
         mixerRight.gain(3, synthGain);
         break;
     }
@@ -843,13 +877,7 @@ void stopArpTimer()
     arpTimerActive = false;
 
     // Restore normal voice levels
-    float synthGain = 0.8f;
-    mixerLeft.gain(1, synthGain);
-    mixerLeft.gain(2, synthGain);
-    mixerLeft.gain(3, synthGain);
-    mixerRight.gain(1, synthGain);
-    mixerRight.gain(2, synthGain);
-    mixerRight.gain(3, synthGain);
+    restoreMixerGains(0.8f);
 
     Serial.println("Arp timer stopped");
 }
@@ -895,12 +923,49 @@ void updateArpeggiator()
         }
 
         // Ensure all voices are on for poly mode
-        float synthGain = 0.8f;
-        mixerLeft.gain(1, synthGain);
-        mixerLeft.gain(2, synthGain);
-        mixerLeft.gain(3, synthGain);
-        mixerRight.gain(1, synthGain);
-        mixerRight.gain(2, synthGain);
-        mixerRight.gain(3, synthGain);
+        restoreMixerGains(0.8f);
+    }
+}
+
+void applyOutputMode()
+{
+    // Output modes:
+    // 0 = Mix: Guitar + Synth on both L and R (default)
+    // 1 = Split: Guitar only on L (no synth), Synth only on R (no guitar)
+    
+#define BOOST_INPUT_GAIN false
+    float inputGain = BOOST_INPUT_GAIN ? 1.5 : 1.0;
+    float synthGain = 0.2;
+    
+    if (currentOutputMode == 1) // Split mode
+    {
+        // Left channel: guitar only (no synth)
+        mixerLeft.gain(0, inputGain);  // guitar input
+        mixerLeft.gain(1, 0.0f);       // synth root - off
+        mixerLeft.gain(2, 0.0f);       // synth 3rd - off
+        mixerLeft.gain(3, 0.0f);       // synth 5th - off
+        
+        // Right channel: synth only (no guitar)
+        mixerRight.gain(0, 0.0f);       // guitar input - off
+        mixerRight.gain(1, synthGain);  // synth root
+        mixerRight.gain(2, synthGain);  // synth 3rd
+        mixerRight.gain(3, synthGain);  // synth 5th
+        
+        Serial.println("Output mode: SPLIT (L=guitar, R=synth)");
+    }
+    else // Mix mode (default)
+    {
+        // Both channels: guitar + synth mixed together
+        mixerLeft.gain(0, inputGain);  // guitar input
+        mixerLeft.gain(1, synthGain);  // synth root
+        mixerLeft.gain(2, synthGain);  // synth 3rd
+        mixerLeft.gain(3, synthGain);  // synth 5th
+        
+        mixerRight.gain(0, inputGain); // guitar input
+        mixerRight.gain(1, synthGain); // synth root
+        mixerRight.gain(2, synthGain); // synth 3rd
+        mixerRight.gain(3, synthGain); // synth 5th
+        
+        Serial.println("Output mode: MIX (L+R=guitar+synth)");
     }
 }

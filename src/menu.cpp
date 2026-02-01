@@ -11,7 +11,8 @@ int menuOctaveIndex = 1;   // index into octave options (default 0)
 int menuBassGuitIndex = 0; // 0=Bass, 1=Guitar
 int menuSynthSndIndex = 0; // 0=Sine, 1=Organ
 int menuArpIndex = 1;      // 0=Arp, 1=Poly (default Poly)
-int menuConfigIndex = 0;   // 0=Bass/Gtr, 1=Muting
+int menuConfigIndex = 0;   // 0=Bass/Gtr, 1=Muting, 2=Output
+int menuOutputIndex = 0;   // 0=Mix, 1=Split
 
 // Viewport tracking for scrolling submenus
 int keyViewportStart = 0;
@@ -23,6 +24,7 @@ int mutingViewportStart = 0;
 int synthSndViewportStart = 0;
 int arpViewportStart = 0;
 int configViewportStart = 0;
+int outputViewportStart = 0;
 
 // Menu display names
 const char *menuTopItems[] = {"MusicKey", "Maj/Min", "Octave", "SynthSnd", "Arp/Poly", "Config"};
@@ -58,8 +60,12 @@ const char *arpMenuNames[] = {"Arp", "Poly"};
 const int ARP_MENU_COUNT = 2;
 
 // Config submenu options
-const char *configMenuNames[] = {"Bass/Gtr", "Muting"};
-const int CONFIG_MENU_COUNT = 2;
+const char *configMenuNames[] = {"Bass/Gtr", "Muting", "Output"};
+const int CONFIG_MENU_COUNT = 3;
+
+// Output options
+const char *outputMenuNames[] = {"Mix", "Split"};
+const int OUTPUT_MENU_COUNT = 2;
 
 void handleMenuEncoder(int delta)
 {
@@ -134,6 +140,14 @@ void handleMenuEncoder(int delta)
             menuConfigIndex = 0;
         if (menuConfigIndex > CONFIG_MENU_COUNT)
             menuConfigIndex = CONFIG_MENU_COUNT; // allow Parent
+    }
+    else if (currentMenuLevel == MENU_OUTPUT_SELECT)
+    {
+        menuOutputIndex += delta;
+        if (menuOutputIndex < 0)
+            menuOutputIndex = 0;
+        if (menuOutputIndex > OUTPUT_MENU_COUNT)
+            menuOutputIndex = OUTPUT_MENU_COUNT; // allow Parent
     }
 }
 
@@ -315,6 +329,27 @@ void handleMenuButton()
             currentMenuLevel = MENU_MUTING_SELECT;
             // Initialize to current muting setting (0=Disabled,1=Enabled)
             menuMutingIndex = currentMutingEnabled ? 1 : 0;
+        }
+        else if (menuConfigIndex == 2) // Output
+        {
+            currentMenuLevel = MENU_OUTPUT_SELECT;
+            // Initialize to current output setting (0=Mix,1=Split)
+            menuOutputIndex = currentOutputMode;
+        }
+    }
+    else if (currentMenuLevel == MENU_OUTPUT_SELECT)
+    {
+        // If Parent selected, return to Config. Otherwise apply output setting.
+        if (menuOutputIndex == OUTPUT_MENU_COUNT)
+        {
+            currentMenuLevel = MENU_CONFIG_SELECT;
+        }
+        else
+        {
+            currentOutputMode = menuOutputIndex;
+            applyOutputMode(); // Apply the routing change
+            saveNVRAM();
+            currentMenuLevel = MENU_CONFIG_SELECT;
         }
     }
 }

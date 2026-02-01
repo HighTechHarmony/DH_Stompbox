@@ -10,6 +10,7 @@ bool currentInstrumentIsBass = false; // false=Guitar (default), true=Bass
 // Muting setting persisted (false=Disabled, true=Enabled)
 bool currentMutingEnabled = false;
 int currentSynthSound = 0; // 0=Sine (default), 1=Organ
+int currentOutputMode = 0; // 0=Mix, 1=Split
 
 void saveNVRAM()
 {
@@ -24,6 +25,7 @@ void saveNVRAM()
     EEPROM.write(NVRAM_MUTING_ADDR, (uint8_t)(currentMutingEnabled ? 1 : 0));
     EEPROM.write(NVRAM_SYNTHSND_ADDR, (uint8_t)currentSynthSound);
     EEPROM.write(NVRAM_ARP_ADDR, (uint8_t)currentArpMode);
+    EEPROM.write(NVRAM_OUTPUT_ADDR, (uint8_t)currentOutputMode);
     // store octave shifted by +2 to fit into unsigned byte (valid -1..2 -> 1..4)
     int8_t enc = currentOctaveShift + 2;
     if (enc < 0)
@@ -86,6 +88,13 @@ void loadNVRAM()
         Serial.print(" arpMode=");
         const char *arpNames[] = {"Arp", "Poly"};
         Serial.println(arpNames[currentArpMode]);
+        // load output mode (0 = Mix, 1 = Split)
+        uint8_t om = EEPROM.read(NVRAM_OUTPUT_ADDR);
+        if (om <= 1) // validate range
+            currentOutputMode = om;
+        Serial.print(" outputMode=");
+        const char *outputNames[] = {"Mix", "Split"};
+        Serial.println(outputNames[currentOutputMode]);
     }
     else
     {

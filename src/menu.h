@@ -14,7 +14,8 @@ enum MenuLevel
     MENU_MUTING_SELECT,
     MENU_SYNTHSND_SELECT,
     MENU_ARP_SELECT,
-    MENU_CONFIG_SELECT
+    MENU_CONFIG_SELECT,
+    MENU_OUTPUT_SELECT
 };
 
 extern MenuLevel currentMenuLevel;
@@ -27,6 +28,7 @@ extern int menuMutingIndex;
 extern int menuSynthSndIndex;
 extern int menuArpIndex;
 extern int menuConfigIndex;
+extern int menuOutputIndex;
 
 // Viewport tracking for scrolling submenus
 extern int keyViewportStart;
@@ -38,6 +40,7 @@ extern int mutingViewportStart;
 extern int synthSndViewportStart;
 extern int arpViewportStart;
 extern int configViewportStart;
+extern int outputViewportStart;
 
 // Menu display names
 extern const char *menuTopItems[];
@@ -60,6 +63,8 @@ extern const char *arpMenuNames[];
 extern const int ARP_MENU_COUNT;
 extern const char *configMenuNames[];
 extern const int CONFIG_MENU_COUNT;
+extern const char *outputMenuNames[];
+extern const int OUTPUT_MENU_COUNT;
 
 extern bool currentInstrumentIsBass;
 

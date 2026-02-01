@@ -72,5 +72,6 @@ void updateArpeggiator();
 void startArpTimer();
 void stopArpTimer();
 void updateArpTimerInterval();
+void applyOutputMode();
 
 #endif // AUDIO_H
