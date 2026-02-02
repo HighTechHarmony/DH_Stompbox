@@ -19,6 +19,8 @@
 #define NVRAM_ARP_ADDR 7
 // Address for Output Mode (0=Mix, 1=Split)
 #define NVRAM_OUTPUT_ADDR 8
+// Address for Stop Mode (0=Fade, 1=Immediate)
+#define NVRAM_STOPMODE_ADDR 9
 
 extern int currentKey;
 // Mode: 0=Major, 1=Minor, 2=Fixed Major, 3=Fixed Minor
@@ -29,6 +31,7 @@ extern bool currentMutingEnabled;
 extern int currentSynthSound;       // 0=Sine, 1=Organ, etc.
 extern volatile int currentArpMode; // 0=Arp, 1=Poly
 extern int currentOutputMode;       // 0=Mix, 1=Split
+extern int currentStopMode;         // 0=Fade, 1=Immediate
 
 void saveNVRAM();
 void loadNVRAM();

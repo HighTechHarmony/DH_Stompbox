@@ -25,6 +25,7 @@ int synthSndViewportStart = 0;
 int arpViewportStart = 0;
 int configViewportStart = 0;
 int outputViewportStart = 0;
+int stopModeViewportStart = 0;
 
 // Menu display names
 const char *menuTopItems[] = {"MusicKey", "Maj/Min", "Octave", "SynthSnd", "Arp/Poly", "Config"};
@@ -60,12 +61,17 @@ const char *arpMenuNames[] = {"Arp", "Poly"};
 const int ARP_MENU_COUNT = 2;
 
 // Config submenu options
-const char *configMenuNames[] = {"Bass/Gtr", "Muting", "Output"};
-const int CONFIG_MENU_COUNT = 3;
+const char *configMenuNames[] = {"Bass/Gtr", "Muting", "Output", "StopMode"};
+const int CONFIG_MENU_COUNT = 4;
 
 // Output options
 const char *outputMenuNames[] = {"Mix", "Split"};
 const int OUTPUT_MENU_COUNT = 2;
+
+// Stop mode options
+const char *stopModeMenuNames[] = {"Fade", "Immediate"};
+const int STOPMODE_MENU_COUNT = 2;
+int menuStopModeIndex = 0; // 0=Fade, 1=Immediate
 
 void handleMenuEncoder(int delta)
 {
@@ -148,6 +154,14 @@ void handleMenuEncoder(int delta)
             menuOutputIndex = 0;
         if (menuOutputIndex > OUTPUT_MENU_COUNT)
             menuOutputIndex = OUTPUT_MENU_COUNT; // allow Parent
+    }
+    else if (currentMenuLevel == MENU_STOPMODE_SELECT)
+    {
+        menuStopModeIndex += delta;
+        if (menuStopModeIndex < 0)
+            menuStopModeIndex = 0;
+        if (menuStopModeIndex > STOPMODE_MENU_COUNT)
+            menuStopModeIndex = STOPMODE_MENU_COUNT; // allow Parent
     }
 }
 
@@ -336,6 +350,12 @@ void handleMenuButton()
             // Initialize to current output setting (0=Mix,1=Split)
             menuOutputIndex = currentOutputMode;
         }
+        else if (menuConfigIndex == 3) // StopMode
+        {
+            currentMenuLevel = MENU_STOPMODE_SELECT;
+            // Initialize to current stop mode setting (0=Fade,1=Immediate)
+            menuStopModeIndex = currentStopMode;
+        }
     }
     else if (currentMenuLevel == MENU_OUTPUT_SELECT)
     {
@@ -348,6 +368,29 @@ void handleMenuButton()
         {
             currentOutputMode = menuOutputIndex;
             applyOutputMode(); // Apply the routing change
+            saveNVRAM();
+            currentMenuLevel = MENU_CONFIG_SELECT;
+        }
+    }
+    else if (currentMenuLevel == MENU_STOPMODE_SELECT)
+    {
+        // If Parent selected, return to Config. Otherwise apply stop mode setting.
+        if (menuStopModeIndex == STOPMODE_MENU_COUNT)
+        {
+            currentMenuLevel = MENU_CONFIG_SELECT;
+        }
+        else
+        {
+            currentStopMode = menuStopModeIndex;
+            // Apply the fade duration based on mode
+            if (currentStopMode == 1) // Immediate
+            {
+                chordFadeDurationMs = 0;
+            }
+            else // Fade
+            {
+                chordFadeDurationMs = 1500;
+            }
             saveNVRAM();
             currentMenuLevel = MENU_CONFIG_SELECT;
         }

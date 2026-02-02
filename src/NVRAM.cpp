@@ -11,6 +11,7 @@ bool currentInstrumentIsBass = false; // false=Guitar (default), true=Bass
 bool currentMutingEnabled = false;
 int currentSynthSound = 0; // 0=Sine (default), 1=Organ
 int currentOutputMode = 0; // 0=Mix, 1=Split
+int currentStopMode = 0;   // 0=Fade (default), 1=Immediate
 
 void saveNVRAM()
 {
@@ -26,6 +27,7 @@ void saveNVRAM()
     EEPROM.write(NVRAM_SYNTHSND_ADDR, (uint8_t)currentSynthSound);
     EEPROM.write(NVRAM_ARP_ADDR, (uint8_t)currentArpMode);
     EEPROM.write(NVRAM_OUTPUT_ADDR, (uint8_t)currentOutputMode);
+    EEPROM.write(NVRAM_STOPMODE_ADDR, (uint8_t)currentStopMode);
     // store octave shifted by +2 to fit into unsigned byte (valid -1..2 -> 1..4)
     int8_t enc = currentOctaveShift + 2;
     if (enc < 0)
@@ -95,6 +97,22 @@ void loadNVRAM()
         Serial.print(" outputMode=");
         const char *outputNames[] = {"Mix", "Split"};
         Serial.println(outputNames[currentOutputMode]);
+        // load stop mode (0 = Fade, 1 = Immediate)
+        uint8_t sm = EEPROM.read(NVRAM_STOPMODE_ADDR);
+        if (sm <= 1) // validate range
+            currentStopMode = sm;
+        Serial.print(" stopMode=");
+        const char *stopModeNames[] = {"Fade", "Immediate"};
+        Serial.println(stopModeNames[currentStopMode]);
+        // Apply the stop mode setting to chordFadeDurationMs
+        if (currentStopMode == 1) // Immediate
+        {
+            chordFadeDurationMs = 0;
+        }
+        else // Fade
+        {
+            chordFadeDurationMs = 1500;
+        }
     }
     else
     {

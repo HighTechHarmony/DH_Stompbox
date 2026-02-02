@@ -615,6 +615,55 @@ void renderMenuScreen()
                 display.println("^");
         }
     }
+    else if (currentMenuLevel == MENU_STOPMODE_SELECT)
+    {
+        // Stop Mode selection submenu - show "StopMode" as title
+        display.setCursor(0, 0);
+        display.println("StopMode");
+
+        int totalCount = STOPMODE_MENU_COUNT + 1; // includes Parent
+        int visible = 3;
+
+        // Stable viewport scrolling
+        if (menuStopModeIndex < stopModeViewportStart)
+        {
+            stopModeViewportStart = menuStopModeIndex;
+        }
+        else if (menuStopModeIndex >= stopModeViewportStart + visible)
+        {
+            stopModeViewportStart = menuStopModeIndex - visible + 1;
+        }
+
+        if (stopModeViewportStart < 0)
+            stopModeViewportStart = 0;
+        if (stopModeViewportStart > totalCount - visible)
+            stopModeViewportStart = totalCount - visible;
+        if (stopModeViewportStart < 0)
+            stopModeViewportStart = 0;
+
+        for (int i = 0; i < visible; i++)
+        {
+            int idx = stopModeViewportStart + i;
+            if (idx >= totalCount)
+                break;
+
+            int y = 18 + i * 18;
+            display.setCursor(0, y);
+            if (idx == menuStopModeIndex)
+            {
+                display.print("> ");
+            }
+            else
+            {
+                display.print("  ");
+            }
+
+            if (idx < STOPMODE_MENU_COUNT)
+                display.println(stopModeMenuNames[idx]);
+            else
+                display.println("^");
+        }
+    }
 
     display.display();
 }
