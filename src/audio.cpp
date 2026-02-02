@@ -172,6 +172,43 @@ float getDiatonicThird(float noteFreq, int keyNote, int mode)
     return powf(2.0f, thirdSemitones / 12.0f);
 }
 
+// Determine fifth interval ratio.
+// Use flat-5 (tritone, +6 semitones) when building a chord on the 7th scale degree
+// in Major (mode==0) or Natural Minor (mode==1).
+float getDiatonicFifth(float noteFreq, int keyNote, int mode)
+{
+    int fifthSemitones = 7; // perfect fifth by default
+
+    // Major or Natural Minor: use diminished fifth for 7th scale degree
+    if (mode == 0 || mode == 1)
+    {
+        // Determine the scale degree of the detected note
+        float midiNote = 12.0f * log2f(noteFreq / 440.0f) + 69.0f;
+        int noteClass = ((int)round(midiNote)) % 12; // 0-11 chromatic position
+        int relativePosition = (noteClass - keyNote + 12) % 12;
+        
+        if (mode == 0) // Major mode
+        {
+            // 7th scale degree in major is 11 semitones above root (e.g., D# in E major)
+            if (relativePosition == 11)
+            {
+                Serial.println("Using flat-5 for 7th degree (diminished fifth)");
+                fifthSemitones = 6; // flat-5
+            }
+        }
+        else if (mode == 1) // Natural minor mode
+        {
+            // 7th scale degree in natural minor is 10 semitones above root
+            if (relativePosition == 10)
+            {
+                Serial.println("Using flat-5 for 7th degree (diminished fifth)");
+                fifthSemitones = 6; // flat-5
+            }
+        }
+    }
+    return powf(2.0f, fifthSemitones / 12.0f);
+}
+
 void restoreMixerGains(float synthGain)
 {
     // Restore mixer gains respecting the current output mode
@@ -365,9 +402,9 @@ void startChord(float potNorm, float tonicFreq, int keyNote, int mode)
     // cancel any fade in progress
     chordFading = false;
 
-    // compute triad intervals (diatonic third, perfect fifth)
+    // compute triad intervals (diatonic third, diatonic fifth)
     const float third = getDiatonicThird(tonic, keyNote, mode);
-    const float fifth = powf(2.0f, 7.0f / 12.0f); // +7 semitones
+    const float fifth = getDiatonicFifth(tonic, keyNote, mode);
 
     // apply octave shift
     float octaveMul = powf(2.0f, (float)currentOctaveShift);
@@ -429,9 +466,9 @@ void updateChordTonic(float tonicFreq, int keyNote, int mode)
 
     currentChordTonic = tonicFreq;
 
-    // compute triad intervals (diatonic third, perfect fifth)
+    // compute triad intervals (diatonic third, diatonic fifth)
     const float third = getDiatonicThird(tonicFreq, keyNote, mode);
-    const float fifth = powf(2.0f, 7.0f / 12.0f); // +7 semitones
+    const float fifth = getDiatonicFifth(tonicFreq, keyNote, mode);
 
     // apply octave shift
     float octaveMul = powf(2.0f, (float)currentOctaveShift);
