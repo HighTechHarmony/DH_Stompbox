@@ -36,8 +36,9 @@ float reverbWet = 0.10f;
 
 // chord state
 bool chordActive = false;
-bool chordSuppressed = true;      // when true, automatic restart is disabled (e.g., FS2 pressed)
-float currentChordTonic = 440.0f; // current tonic being played
+bool chordSuppressed = true;       // when true, automatic restart is disabled (e.g., FS2 pressed)
+bool waitingForFirstPitch = false; // when true, waiting for first valid pitch after silent startup
+float currentChordTonic = 440.0f;  // current tonic being played
 
 // fade state for graceful stop
 bool chordFading = false;
@@ -391,10 +392,12 @@ void startChord(float potNorm, float tonicFreq, int keyNote, int mode)
 {
     // choose tonic: passed in or last detected
     float tonic = (tonicFreq > 1.0f) ? tonicFreq : lastDetectedFrequency;
-    bool hasValidPitch = (tonic > 0.0f);
-    
+    bool usingFallback = false;
     if (tonic <= 0.0f)
-        tonic = 440.0f; // fallback to A4 for frequency calculation only
+    {
+        tonic = 440.0f; // fallback to A4
+        usingFallback = true;
+    }
 
     currentChordTonic = tonic;
     // clear suppression when starting chord explicitly
@@ -409,8 +412,8 @@ void startChord(float potNorm, float tonicFreq, int keyNote, int mode)
     // apply octave shift
     float octaveMul = powf(2.0f, (float)currentOctaveShift);
 
-    // If no valid pitch detected yet, start silent (amplitude will be set when pitch is detected)
-    float perVoice = hasValidPitch ? (potNorm / 3.0f) : 0.0f;
+    // If using fallback frequency, start silent and wait for first valid detection
+    float perVoice = usingFallback ? 0.0f : (potNorm / 3.0f);
 
     // Initialize sound based on currentSynthSound selection
     if (currentSynthSound == 1) // Organ
@@ -432,25 +435,19 @@ void startChord(float potNorm, float tonicFreq, int keyNote, int mode)
 
     if (!chordActive)
     {
-        if (hasValidPitch)
-        {
-            Serial.println(">>> CHORD START at tonic " + String(tonic) + "Hz vol " + String(potNorm));
-        }
-        else
-        {
-            Serial.println(">>> CHORD START (waiting for pitch detection)");
-        }
+        Serial.println(">>> CHORD START at tonic " + String(tonic) + "Hz vol " + String(potNorm) + (usingFallback ? " (silent until detection)" : ""));
     }
     digitalWrite(LED_BUILTIN, HIGH);
 
-    beepAmp = hasValidPitch ? potNorm : 0.0f;
+    beepAmp = usingFallback ? 0.0f : potNorm;
+    waitingForFirstPitch = usingFallback;
     chordActive = true;
 
     // Reset arpeggiator state when starting chord
     arpCurrentStep = 0;
 
     // Start arp timer if in arp mode (only if we have valid pitch)
-    if (currentArpMode == 0 && hasValidPitch)
+    if (currentArpMode == 0 && !usingFallback)
     {
         startArpTimer();
     }
@@ -461,10 +458,15 @@ void updateChordTonic(float tonicFreq, int keyNote, int mode)
     if (!chordActive || tonicFreq <= 0.0f)
         return;
 
-    // Check if we're transitioning from silent start to having valid pitch
-    bool wasWaitingForPitch = (beepAmp <= 0.0f);
-
     currentChordTonic = tonicFreq;
+
+    // If we were waiting for first pitch after silent startup, restore volume now
+    if (waitingForFirstPitch)
+    {
+        waitingForFirstPitch = false;
+        // Volume will be restored by updateChordVolume() on next loop iteration
+        Serial.println(">>> First pitch detected, restoring volume");
+    }
 
     // compute triad intervals (diatonic third, diatonic fifth)
     const float third = getDiatonicThird(tonicFreq, keyNote, mode);
@@ -513,16 +515,7 @@ void updateChordTonic(float tonicFreq, int keyNote, int mode)
         myEffect3.frequency(tonicFreq * fifth * octaveMul);
     }
 
-    // If we were waiting for pitch detection and now have it, start arpeggiator if needed
-    if (wasWaitingForPitch)
-    {
-        Serial.println(">>> PITCH DETECTED, chord now active at " + String(tonicFreq) + "Hz");
-        // Arpeggiator will be started by updateArpeggiator() in main loop if in arp mode
-    }
-    else
-    {
-        Serial.println(">>> CHORD UPDATE tonic " + String(tonicFreq) + "Hz");
-    }
+    Serial.println(">>> CHORD UPDATE tonic " + String(tonicFreq) + "Hz");
 }
 
 // Periodic vibrato update: called from main loop
@@ -633,7 +626,8 @@ void updateChordVolume(float potNorm)
 {
     if (chordActive || chordFading)
     {
-        if (!chordFading)
+        // Also skip if waiting for first valid pitch detection after silent startup.
+        if (!chordFading && !waitingForFirstPitch)
         {
             // Apply volume based on current sound
             if (currentSynthSound == 1) // Organ

@@ -28,6 +28,7 @@ extern bool audioShieldEnabled;
 extern float reverbWet;
 extern bool chordActive;
 extern bool chordSuppressed;
+extern bool waitingForFirstPitch;
 extern float currentChordTonic;
 extern bool chordFading;
 extern unsigned long chordFadeStartMs;
