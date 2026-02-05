@@ -198,8 +198,8 @@ float getDiatonicFifth(float noteFreq, int keyNote, int mode)
         }
         else if (mode == 1) // Natural minor mode
         {
-            // 7th scale degree in natural minor is 10 semitones above root
-            if (relativePosition == 10)
+            // 7th scale degree in natural minor is 2 semitones above (e.g. B in A minor )
+            if (relativePosition == 2)
             {
                 Serial.println("Using flat-5 for 7th degree (diminished fifth)");
                 fifthSemitones = 6; // flat-5
