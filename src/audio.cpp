@@ -36,9 +36,8 @@ float reverbWet = 0.10f;
 
 // chord state
 bool chordActive = false;
-bool chordSuppressed = true;       // when true, automatic restart is disabled (e.g., FS2 pressed)
-bool waitingForFirstPitch = false; // when true, waiting for first valid pitch after silent startup
-float currentChordTonic = 440.0f;  // current tonic being played
+bool chordSuppressed = true;      // when true, automatic restart is disabled (e.g., FS2 pressed)
+float currentChordTonic = 440.0f; // current tonic being played
 
 // fade state for graceful stop
 bool chordFading = false;
@@ -71,7 +70,7 @@ float rhodesDecayStartAmp = 0.0f;
 // Arpeggiator state (120 BPM eighth notes)
 volatile int currentArpMode = 1;                // 0=Arp, 1=Poly (default Poly)
 volatile int arpCurrentStep = 0;                // 0=root, 1=third, 2=fifth
-volatile unsigned long arpStepDurationMs = 125; // 125ms = eighth note at 120 BPM (will be updated by tempo)
+volatile unsigned long arpStepDurationMs = 125; // base step (derived from tapped tempo) - effective timer rate will be doubled
 volatile bool arpTimerActive = false;           // True when arp timer is running
 float globalTempoBPM = 120.0f;                  // Global tempo
 
@@ -187,7 +186,7 @@ float getDiatonicFifth(float noteFreq, int keyNote, int mode)
         float midiNote = 12.0f * log2f(noteFreq / 440.0f) + 69.0f;
         int noteClass = ((int)round(midiNote)) % 12; // 0-11 chromatic position
         int relativePosition = (noteClass - keyNote + 12) % 12;
-        
+
         if (mode == 0) // Major mode
         {
             // 7th scale degree in major is 11 semitones above root (e.g., D# in E major)
@@ -215,14 +214,14 @@ void restoreMixerGains(float synthGain)
     // Restore mixer gains respecting the current output mode
     // In split mode: Left = guitar only, Right = synth only
     // In mix mode: Both channels have guitar + synth
-    
+
     if (currentOutputMode == 1) // Split mode
     {
         // Left channel: guitar only (no synth)
         mixerLeft.gain(1, 0.0f);
         mixerLeft.gain(2, 0.0f);
         mixerLeft.gain(3, 0.0f);
-        
+
         // Right channel: synth only
         mixerRight.gain(1, synthGain);
         mixerRight.gain(2, synthGain);
@@ -392,12 +391,10 @@ void startChord(float potNorm, float tonicFreq, int keyNote, int mode)
 {
     // choose tonic: passed in or last detected
     float tonic = (tonicFreq > 1.0f) ? tonicFreq : lastDetectedFrequency;
-    bool usingFallback = false;
+    bool hasValidPitch = (tonic > 0.0f);
+
     if (tonic <= 0.0f)
-    {
-        tonic = 440.0f; // fallback to A4
-        usingFallback = true;
-    }
+        tonic = 440.0f; // fallback to A4 for frequency calculation only
 
     currentChordTonic = tonic;
     // clear suppression when starting chord explicitly
@@ -412,8 +409,8 @@ void startChord(float potNorm, float tonicFreq, int keyNote, int mode)
     // apply octave shift
     float octaveMul = powf(2.0f, (float)currentOctaveShift);
 
-    // If using fallback frequency, start silent and wait for first valid detection
-    float perVoice = usingFallback ? 0.0f : (potNorm / 3.0f);
+    // If no valid pitch detected yet, start silent (amplitude will be set when pitch is detected)
+    float perVoice = hasValidPitch ? (potNorm / 3.0f) : 0.0f;
 
     // Initialize sound based on currentSynthSound selection
     if (currentSynthSound == 1) // Organ
@@ -435,19 +432,25 @@ void startChord(float potNorm, float tonicFreq, int keyNote, int mode)
 
     if (!chordActive)
     {
-        Serial.println(">>> CHORD START at tonic " + String(tonic) + "Hz vol " + String(potNorm) + (usingFallback ? " (silent until detection)" : ""));
+        if (hasValidPitch)
+        {
+            Serial.println(">>> CHORD START at tonic " + String(tonic) + "Hz vol " + String(potNorm));
+        }
+        else
+        {
+            Serial.println(">>> CHORD START (waiting for pitch detection)");
+        }
     }
     digitalWrite(LED_BUILTIN, HIGH);
 
-    beepAmp = usingFallback ? 0.0f : potNorm;
-    waitingForFirstPitch = usingFallback;
+    beepAmp = hasValidPitch ? potNorm : 0.0f;
     chordActive = true;
 
     // Reset arpeggiator state when starting chord
     arpCurrentStep = 0;
 
     // Start arp timer if in arp mode (only if we have valid pitch)
-    if (currentArpMode == 0 && !usingFallback)
+    if (currentArpMode == 0 && hasValidPitch)
     {
         startArpTimer();
     }
@@ -458,15 +461,10 @@ void updateChordTonic(float tonicFreq, int keyNote, int mode)
     if (!chordActive || tonicFreq <= 0.0f)
         return;
 
-    currentChordTonic = tonicFreq;
+    // Check if we're transitioning from silent start to having valid pitch
+    bool wasWaitingForPitch = (beepAmp <= 0.0f);
 
-    // If we were waiting for first pitch after silent startup, restore volume now
-    if (waitingForFirstPitch)
-    {
-        waitingForFirstPitch = false;
-        // Volume will be restored by updateChordVolume() on next loop iteration
-        Serial.println(">>> First pitch detected, restoring volume");
-    }
+    currentChordTonic = tonicFreq;
 
     // compute triad intervals (diatonic third, diatonic fifth)
     const float third = getDiatonicThird(tonicFreq, keyNote, mode);
@@ -515,7 +513,16 @@ void updateChordTonic(float tonicFreq, int keyNote, int mode)
         myEffect3.frequency(tonicFreq * fifth * octaveMul);
     }
 
-    Serial.println(">>> CHORD UPDATE tonic " + String(tonicFreq) + "Hz");
+    // If we were waiting for pitch detection and now have it, start arpeggiator if needed
+    if (wasWaitingForPitch)
+    {
+        Serial.println(">>> PITCH DETECTED, chord now active at " + String(tonicFreq) + "Hz");
+        // Arpeggiator will be started by updateArpeggiator() in main loop if in arp mode
+    }
+    else
+    {
+        Serial.println(">>> CHORD UPDATE tonic " + String(tonicFreq) + "Hz");
+    }
 }
 
 // Periodic vibrato update: called from main loop
@@ -626,8 +633,7 @@ void updateChordVolume(float potNorm)
 {
     if (chordActive || chordFading)
     {
-        // Also skip if waiting for first valid pitch detection after silent startup.
-        if (!chordFading && !waitingForFirstPitch)
+        if (!chordFading)
         {
             // Apply volume based on current sound
             if (currentSynthSound == 1) // Organ
@@ -797,10 +803,10 @@ void setupAudio()
     float inputGain = BOOST_INPUT_GAIN ? 1.5 : 1.0;
     float synthGain = 0.2;
 
-    mixerLeft.gain(0, inputGain);  // input left
-    mixerLeft.gain(1, synthGain);  // synth root
-    mixerLeft.gain(2, synthGain);  // synth 3rd
-    mixerLeft.gain(3, synthGain);  // synth 5th
+    mixerLeft.gain(0, inputGain); // input left
+    mixerLeft.gain(1, synthGain); // synth root
+    mixerLeft.gain(2, synthGain); // synth 3rd
+    mixerLeft.gain(3, synthGain); // synth 5th
 
     mixerRight.gain(0, inputGain); // input right
     mixerRight.gain(1, synthGain); // synth root
@@ -854,22 +860,22 @@ void arpTimerISR()
 
     // Unmute only the current step voice
     float synthGain = 0.8f;
-    
+
     // In split mode, synth is only on right channel
     // In mix mode, synth is on both channels
     switch (arpCurrentStep)
     {
-    case 0: // Root voice
+    case 0:                         // Root voice
         if (currentOutputMode == 0) // Mix mode
             mixerLeft.gain(1, synthGain);
         mixerRight.gain(1, synthGain);
         break;
-    case 1: // Third voice
+    case 1:                         // Third voice
         if (currentOutputMode == 0) // Mix mode
             mixerLeft.gain(2, synthGain);
         mixerRight.gain(2, synthGain);
         break;
-    case 2: // Fifth voice
+    case 2:                         // Fifth voice
         if (currentOutputMode == 0) // Mix mode
             mixerLeft.gain(3, synthGain);
         mixerRight.gain(3, synthGain);
@@ -889,7 +895,9 @@ void startArpTimer()
     if (arpTimerActive)
         return;
 
-    unsigned long intervalUs = arpStepDurationMs * 1000;
+    // Use half the configured step duration so the arp runs at double the rate
+    unsigned long effectiveStepMs = (arpStepDurationMs > 1) ? (arpStepDurationMs / 2) : arpStepDurationMs;
+    unsigned long intervalUs = effectiveStepMs * 1000;
     arpTimer.begin(arpTimerISR, intervalUs);
     arpTimerActive = true;
 
@@ -919,12 +927,15 @@ void updateArpTimerInterval()
         return;
 
     arpTimer.end();
-    unsigned long intervalUs = arpStepDurationMs * 1000;
+
+    // Use half the configured step duration so the arp runs at double the rate
+    unsigned long effectiveStepMs = (arpStepDurationMs > 1) ? (arpStepDurationMs / 2) : arpStepDurationMs;
+    unsigned long intervalUs = effectiveStepMs * 1000;
     arpTimer.begin(arpTimerISR, intervalUs);
 
     Serial.print("Arp timer interval updated to ");
     Serial.print(arpStepDurationMs);
-    Serial.println(" ms");
+    Serial.println(" ms (effective rate doubled)");
 }
 
 void updateArpeggiator()
@@ -963,40 +974,40 @@ void applyOutputMode()
     // Output modes:
     // 0 = Mix: Guitar + Synth on both L and R (default)
     // 1 = Split: Guitar only on L (no synth), Synth only on R (no guitar)
-    
+
 #define BOOST_INPUT_GAIN false
     float inputGain = BOOST_INPUT_GAIN ? 1.5 : 1.0;
     float synthGain = 0.2;
-    
+
     if (currentOutputMode == 1) // Split mode
     {
         // Left channel: guitar only (no synth)
-        mixerLeft.gain(0, inputGain);  // guitar input
-        mixerLeft.gain(1, 0.0f);       // synth root - off
-        mixerLeft.gain(2, 0.0f);       // synth 3rd - off
-        mixerLeft.gain(3, 0.0f);       // synth 5th - off
-        
+        mixerLeft.gain(0, inputGain); // guitar input
+        mixerLeft.gain(1, 0.0f);      // synth root - off
+        mixerLeft.gain(2, 0.0f);      // synth 3rd - off
+        mixerLeft.gain(3, 0.0f);      // synth 5th - off
+
         // Right channel: synth only (no guitar)
-        mixerRight.gain(0, 0.0f);       // guitar input - off
-        mixerRight.gain(1, synthGain);  // synth root
-        mixerRight.gain(2, synthGain);  // synth 3rd
-        mixerRight.gain(3, synthGain);  // synth 5th
-        
+        mixerRight.gain(0, 0.0f);      // guitar input - off
+        mixerRight.gain(1, synthGain); // synth root
+        mixerRight.gain(2, synthGain); // synth 3rd
+        mixerRight.gain(3, synthGain); // synth 5th
+
         Serial.println("Output mode: SPLIT (L=guitar, R=synth)");
     }
     else // Mix mode (default)
     {
         // Both channels: guitar + synth mixed together
-        mixerLeft.gain(0, inputGain);  // guitar input
-        mixerLeft.gain(1, synthGain);  // synth root
-        mixerLeft.gain(2, synthGain);  // synth 3rd
-        mixerLeft.gain(3, synthGain);  // synth 5th
-        
+        mixerLeft.gain(0, inputGain); // guitar input
+        mixerLeft.gain(1, synthGain); // synth root
+        mixerLeft.gain(2, synthGain); // synth 3rd
+        mixerLeft.gain(3, synthGain); // synth 5th
+
         mixerRight.gain(0, inputGain); // guitar input
         mixerRight.gain(1, synthGain); // synth root
         mixerRight.gain(2, synthGain); // synth 3rd
         mixerRight.gain(3, synthGain); // synth 5th
-        
+
         Serial.println("Output mode: MIX (L+R=guitar+synth)");
     }
 }
