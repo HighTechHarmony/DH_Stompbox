@@ -70,7 +70,7 @@ float rhodesDecayStartAmp = 0.0f;
 // Arpeggiator state (120 BPM eighth notes)
 volatile int currentArpMode = 1;                // 0=Arp, 1=Poly (default Poly)
 volatile int arpCurrentStep = 0;                // 0=root, 1=third, 2=fifth
-volatile unsigned long arpStepDurationMs = 125; // base step (derived from tapped tempo) - effective timer rate will be doubled
+volatile unsigned long arpStepDurationMs = 250; // base step (derived from tapped tempo, e.g. 250ms = 120BPM eighth) - effective timer rate will be doubled
 volatile bool arpTimerActive = false;           // True when arp timer is running
 float globalTempoBPM = 120.0f;                  // Global tempo
 
