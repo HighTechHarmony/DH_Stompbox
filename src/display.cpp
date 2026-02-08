@@ -3,6 +3,7 @@
 #include "menu.h"
 #include "audio.h"
 #include "NVRAM.h"
+#include "sdcard.h"
 #include <Wire.h>
 #include <math.h>
 
@@ -45,7 +46,7 @@ void renderHomeScreen(const char *noteName, float frequency)
 
     // Display key and mode
     display.setCursor(0, y);
-    
+
     const char *keyNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
     // If in Fixed interval modes, show a descriptive fixed-interval label
     if (currentMode == 2)
@@ -66,9 +67,9 @@ void renderHomeScreen(const char *noteName, float frequency)
         const char *modeShort[] = {"Maj", "Min"};
         String keyStr = String(keyNames[currentKey]);
         int keyLen = keyStr.length();
-        int maxTotal = 10;                         // maximum chars including space after key
+        int maxTotal = 10;                        // maximum chars including space after key
         int maxModeLen = maxTotal - (keyLen + 1); // leave room for space
-        
+
         if (maxModeLen >= 1)
         {
             String m = String(modeShort[currentMode]);
@@ -468,11 +469,103 @@ void renderMenuScreen()
                 display.println("^");
         }
     }
+    else if (currentMenuLevel == MENU_SDCARD_BROWSE)
+    {
+        // SD card file browser
+        display.setCursor(0, 0);
+
+        if (!sdCardAvailable)
+        {
+            display.println("No SD");
+            display.setCursor(0, 18);
+            display.println("^");
+        }
+        else
+        {
+            // Title: show abbreviated current directory path
+            {
+                const char *path = sdCurrentPath;
+                int pathLen = (int)strlen(path);
+                // Show last portion that fits in ~10 chars
+                if (pathLen <= 10)
+                {
+                    display.println(path);
+                }
+                else
+                {
+                    display.println(path + (pathLen - 10));
+                }
+            }
+
+            // Layout:
+            //   [..] (only when not at root)  -> go up
+            //   sdEntries[0] ... [N-1]        -> dirs/files
+            //   ^                             -> exit to top menu
+            bool atRoot = sdAtRoot();
+            int totalCount = sdTotalVisibleCount();
+            int visible = 3;
+            int entryOffset = atRoot ? 0 : 1; // row offset of first sdEntry
+
+            // Stable viewport scrolling
+            if (sdBrowseIndex < sdBrowseViewportStart)
+            {
+                sdBrowseViewportStart = sdBrowseIndex;
+            }
+            else if (sdBrowseIndex >= sdBrowseViewportStart + visible)
+            {
+                sdBrowseViewportStart = sdBrowseIndex - visible + 1;
+            }
+            if (sdBrowseViewportStart < 0)
+                sdBrowseViewportStart = 0;
+            if (sdBrowseViewportStart > totalCount - visible)
+                sdBrowseViewportStart = totalCount - visible;
+            if (sdBrowseViewportStart < 0)
+                sdBrowseViewportStart = 0;
+
+            for (int i = 0; i < visible; i++)
+            {
+                int idx = sdBrowseViewportStart + i;
+                if (idx >= totalCount)
+                    break;
+
+                int y = 18 + i * 18;
+                display.setCursor(0, y);
+                if (idx == sdBrowseIndex)
+                {
+                    display.print("> ");
+                }
+                else
+                {
+                    display.print("  ");
+                }
+
+                if (!atRoot && idx == 0)
+                {
+                    // ".." row
+                    display.println("..");
+                }
+                else if (idx == totalCount - 1)
+                {
+                    // "^" exit row
+                    display.println("^");
+                }
+                else
+                {
+                    // SD entry
+                    int entryIdx = idx - entryOffset;
+                    if (entryIdx >= 0 && entryIdx < sdEntryCount)
+                    {
+                        display.println(sdEntries[entryIdx].displayName);
+                    }
+                }
+            }
+        }
+    }
     else if (currentMenuLevel == MENU_ARP_SELECT)
     {
         // Arp selection submenu - show current menu name at top
         display.setCursor(0, 0);
-        display.println(menuTopItems[4]);
+        display.println(menuTopItems[5]);
 
         int totalCount = ARP_MENU_COUNT + 1; // includes Parent
         int visible = 3;
@@ -521,7 +614,7 @@ void renderMenuScreen()
     {
         // Config selection submenu - show current menu name at top
         display.setCursor(0, 0);
-        display.println(menuTopItems[5]);
+        display.println(menuTopItems[6]);
 
         int totalCount = CONFIG_MENU_COUNT + 1; // includes Parent
         int visible = 3;
@@ -767,30 +860,31 @@ void renderTapTempoScreen(float bpm)
 {
     display.clearDisplay();
     display.setTextColor(SSD1306_WHITE);
-    
+
     // Display title at the top
     display.setCursor(0, 0);
     display.setTextSize(1);
     display.println("TAP TEMPO MODE");
-    
+
     // Display current BPM in large text
     display.setTextSize(3);
     int bpmInt = (int)(bpm + 0.5f); // Round to nearest integer
     char bpmStr[8];
     sprintf(bpmStr, "%d", bpmInt);
-    
+
     // Center the BPM display
     int textWidth = strlen(bpmStr) * 18; // Approximate width for size 3 text
     int xPos = (SCREEN_WIDTH - textWidth) / 2;
-    if (xPos < 0) xPos = 0;
-    
+    if (xPos < 0)
+        xPos = 0;
+
     display.setCursor(xPos, 20);
     display.print(bpmStr);
-    
+
     // Display "BPM" label below
     display.setTextSize(1);
     display.setCursor(52, 50);
     display.print("BPM");
-    
+
     display.display();
 }

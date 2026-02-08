@@ -1,6 +1,7 @@
 #include "menu.h"
 #include "NVRAM.h"
 #include "audio.h"
+#include "sdcard.h"
 
 // Menu state
 MenuLevel currentMenuLevel = MENU_TOP;
@@ -28,8 +29,8 @@ int outputViewportStart = 0;
 int stopModeViewportStart = 0;
 
 // Menu display names
-const char *menuTopItems[] = {"MusicKey", "Maj/Min", "Octave", "SynthSnd", "Arp/Poly", "Config"};
-const int MENU_TOP_COUNT = 6;
+const char *menuTopItems[] = {"MusicKey", "Maj/Min", "Octave", "SynthSnd", "SDcard", "Arp/Poly", "Config"};
+const int MENU_TOP_COUNT = 7;
 
 const char *keyMenuNames[] = {"A", "Bb", "B", "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab"};
 const int KEY_MENU_COUNT = 12;
@@ -131,6 +132,15 @@ void handleMenuEncoder(int delta)
         if (menuSynthSndIndex > SYNTHSND_MENU_COUNT)
             menuSynthSndIndex = SYNTHSND_MENU_COUNT; // allow Parent
     }
+    else if (currentMenuLevel == MENU_SDCARD_BROWSE)
+    {
+        int total = sdTotalVisibleCount();
+        sdBrowseIndex += delta;
+        if (sdBrowseIndex < 0)
+            sdBrowseIndex = 0;
+        if (sdBrowseIndex >= total)
+            sdBrowseIndex = total - 1;
+    }
     else if (currentMenuLevel == MENU_ARP_SELECT)
     {
         menuArpIndex += delta;
@@ -208,13 +218,22 @@ void handleMenuButton()
             // Initialize to current synth sound setting
             menuSynthSndIndex = currentSynthSound;
         }
-        else if (menuTopIndex == 4) // Arp (was index 6)
+        else if (menuTopIndex == 4) // SDcard
+        {
+            currentMenuLevel = MENU_SDCARD_BROWSE;
+            // Initialise SD card on first entry; re-scan current dir
+            if (!sdCardAvailable)
+                initSDCard();
+            else
+                scanDirectory(sdCurrentPath);
+        }
+        else if (menuTopIndex == 5) // Arp/Poly
         {
             currentMenuLevel = MENU_ARP_SELECT;
             // Initialize to current arp mode (0=Arp, 1=Poly)
             menuArpIndex = currentArpMode;
         }
-        else if (menuTopIndex == 5) // Config (new)
+        else if (menuTopIndex == 6) // Config
         {
             currentMenuLevel = MENU_CONFIG_SELECT;
             menuConfigIndex = 0;
@@ -309,6 +328,40 @@ void handleMenuButton()
             currentSynthSound = menuSynthSndIndex;
             saveNVRAM();
             currentMenuLevel = MENU_TOP;
+        }
+    }
+    else if (currentMenuLevel == MENU_SDCARD_BROWSE)
+    {
+        // Determine what the current browse index points to.
+        // Layout: [..] (if not root) | entries... | ^ (exit)
+        bool atRoot = sdAtRoot();
+        int total = sdTotalVisibleCount();
+        int exitIdx = total - 1;          // last row is always "^"
+        int dotdotIdx = atRoot ? -1 : 0;  // ".." row index (or -1 if root)
+        int entryOffset = atRoot ? 0 : 1; // first sdEntries[] row index
+
+        if (sdBrowseIndex == exitIdx)
+        {
+            // "^" – return to top-level menu
+            currentMenuLevel = MENU_TOP;
+        }
+        else if (!atRoot && sdBrowseIndex == dotdotIdx)
+        {
+            // ".." – go up one directory
+            sdNavigateUp();
+        }
+        else
+        {
+            // Map visible index to sdEntries[] index
+            int entryIdx = sdBrowseIndex - entryOffset;
+            if (entryIdx >= 0 && entryIdx < sdEntryCount)
+            {
+                if (sdEntries[entryIdx].isDirectory)
+                {
+                    sdNavigateInto(entryIdx);
+                }
+                // Files: no action yet (selection TBD)
+            }
         }
     }
     else if (currentMenuLevel == MENU_ARP_SELECT)
