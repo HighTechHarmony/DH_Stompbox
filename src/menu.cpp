@@ -29,8 +29,8 @@ int outputViewportStart = 0;
 int stopModeViewportStart = 0;
 
 // Menu display names
-const char *menuTopItems[] = {"MusicKey", "Maj/Min", "Octave", "SynthSnd", "SDcard", "Arp/Poly", "Config"};
-const int MENU_TOP_COUNT = 7;
+const char *menuTopItems[] = {"MusicKey", "Maj/Min", "Octave", "SynthSnd", "Arp/Poly", "Config"};
+const int MENU_TOP_COUNT = 6;
 
 const char *keyMenuNames[] = {"A", "Bb", "B", "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab"};
 const int KEY_MENU_COUNT = 12;
@@ -54,8 +54,8 @@ const int MUTING_MENU_COUNT = 2;
 int menuMutingIndex = 0; // 0=Disabled, 1=Enabled
 
 // Synth sound options
-const char *synthSndMenuNames[] = {"Sine", "Organ", "Rhodes", "Strings"};
-const int SYNTHSND_MENU_COUNT = 4;
+const char *synthSndMenuNames[] = {"Sine", "Organ", "Rhodes", "Strings", "SDcard"};
+const int SYNTHSND_MENU_COUNT = 5;
 
 // Arpeggiator options
 const char *arpMenuNames[] = {"Arp", "Poly"};
@@ -218,22 +218,13 @@ void handleMenuButton()
             // Initialize to current synth sound setting
             menuSynthSndIndex = currentSynthSound;
         }
-        else if (menuTopIndex == 4) // SDcard
-        {
-            currentMenuLevel = MENU_SDCARD_BROWSE;
-            // Initialise SD card on first entry; re-scan current dir
-            if (!sdCardAvailable)
-                initSDCard();
-            else
-                scanDirectory(sdCurrentPath);
-        }
-        else if (menuTopIndex == 5) // Arp/Poly
+        else if (menuTopIndex == 4) // Arp/Poly
         {
             currentMenuLevel = MENU_ARP_SELECT;
             // Initialize to current arp mode (0=Arp, 1=Poly)
             menuArpIndex = currentArpMode;
         }
-        else if (menuTopIndex == 6) // Config
+        else if (menuTopIndex == 5) // Config
         {
             currentMenuLevel = MENU_CONFIG_SELECT;
             menuConfigIndex = 0;
@@ -318,10 +309,19 @@ void handleMenuButton()
     }
     else if (currentMenuLevel == MENU_SYNTHSND_SELECT)
     {
-        // If Parent selected, return to top. Otherwise apply synth sound.
+        // If Parent selected, return to top.
         if (menuSynthSndIndex == SYNTHSND_MENU_COUNT)
         {
             currentMenuLevel = MENU_TOP;
+        }
+        else if (menuSynthSndIndex == 4) // SDcard
+        {
+            // Enter SD card browser as a sub-submenu of SynthSnd
+            currentMenuLevel = MENU_SDCARD_BROWSE;
+            if (!sdCardAvailable)
+                initSDCard();
+            else
+                scanDirectory(sdCurrentPath);
         }
         else
         {
@@ -342,8 +342,8 @@ void handleMenuButton()
 
         if (sdBrowseIndex == exitIdx)
         {
-            // "^" – return to top-level menu
-            currentMenuLevel = MENU_TOP;
+            // "^" – return to SynthSnd submenu
+            currentMenuLevel = MENU_SYNTHSND_SELECT;
         }
         else if (!atRoot && sdBrowseIndex == dotdotIdx)
         {

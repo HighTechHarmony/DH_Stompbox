@@ -565,7 +565,7 @@ void renderMenuScreen()
     {
         // Arp selection submenu - show current menu name at top
         display.setCursor(0, 0);
-        display.println(menuTopItems[5]);
+        display.println(menuTopItems[4]);
 
         int totalCount = ARP_MENU_COUNT + 1; // includes Parent
         int visible = 3;
@@ -614,7 +614,7 @@ void renderMenuScreen()
     {
         // Config selection submenu - show current menu name at top
         display.setCursor(0, 0);
-        display.println(menuTopItems[6]);
+        display.println(menuTopItems[5]);
 
         int totalCount = CONFIG_MENU_COUNT + 1; // includes Parent
         int visible = 3;
