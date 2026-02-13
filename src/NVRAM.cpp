@@ -1,6 +1,7 @@
 #include "NVRAM.h"
 #include <EEPROM.h>
 #include "audio.h"
+#include "sdcard.h"
 
 // Define global variables declared as extern in NVRAM.h
 int currentKey = 0;                   // 0=C, 1=C#, 2=D, etc. (chromatic scale)
@@ -77,8 +78,9 @@ void loadNVRAM()
         Serial.print(" muting=");
         Serial.println(currentMutingEnabled ? "Enabled" : "Disabled");
         // load synth sound (0 = Sine, 1 = Organ, 2 = Rhodes, 3 = Strings)
+        // Note: SYNTHSND_SAMPLE (4) is not persisted — sample path can't be saved
         uint8_t ss = EEPROM.read(NVRAM_SYNTHSND_ADDR);
-        if (ss <= 3) // validate range
+        if (ss <= 3) // validate range (exclude sample mode)
             currentSynthSound = ss;
         Serial.print(" synthSound=");
         const char *soundNames[] = {"Sine", "Organ", "Rhodes", "Strings"};

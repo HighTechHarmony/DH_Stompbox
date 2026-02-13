@@ -4,7 +4,7 @@
 const int ENC_A = 2;
 const int ENC_B = 3;
 const int ENC_BTN = 4;
-const int FOOT1 = 12;
+const int FOOT1 = 0;
 const int FOOT2 = 9;
 const int POT_PIN = A1; // Audio shield VOL pad
 

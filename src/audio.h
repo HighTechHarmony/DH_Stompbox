@@ -23,6 +23,10 @@ extern AudioMixer4 wetDryRight;
 extern AudioMixer4 synthMix; // combines synth oscillators for reverb
 extern AudioControlSGTL5000 audioShield;
 
+// Sample playback gain mixer (scales samplePlayer before mixers)
+extern AudioMixer4 sampleGainL;
+extern AudioMixer4 sampleGainR;
+
 // Audio state
 extern bool audioShieldEnabled;
 extern float reverbWet;
@@ -74,5 +78,10 @@ void startArpTimer();
 void stopArpTimer();
 void updateArpTimerInterval();
 void applyOutputMode();
+
+// Sample playback helpers (currentSynthSound == SYNTHSND_SAMPLE)
+void startSampleChord(float potNorm);
+void stopSampleChord();
+void setSampleGain(float gain);
 
 #endif // AUDIO_H

@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <SD.h>
+#include <Audio.h>
 
 // SD card on the Audio Shield uses SPI chip-select pin 10
 #define SD_CS_PIN 10
@@ -11,6 +12,9 @@
 #define SD_MAX_ENTRIES 64
 #define SD_NAME_MAX_LEN 64
 #define SD_DISPLAY_MAX_LEN 9 // 8 visible chars + null terminator
+
+// Synth sound index that represents "SD sample" mode
+#define SYNTHSND_SAMPLE 4
 
 struct SDEntry
 {
@@ -26,6 +30,13 @@ extern SDEntry sdEntries[SD_MAX_ENTRIES];
 extern int sdEntryCount;
 extern int sdBrowseIndex;
 extern int sdBrowseViewportStart;
+
+// Selected sample state
+extern bool sampleSelected;          // true when a .wav has been chosen
+extern char selectedSamplePath[256]; // full path to the selected .wav
+
+// WAV player object (mono – feeds into synth mixer for reverb)
+extern AudioPlaySdWav samplePlayer;
 
 // Initialise the SD card; returns true on success
 bool initSDCard();
@@ -50,5 +61,17 @@ int sdTotalVisibleCount();
 
 // Return true when sdCurrentPath is "/"
 bool sdAtRoot();
+
+// Select a .wav file for playback (sets sampleSelected + selectedSamplePath)
+void sdSelectFile(int entryIndex);
+
+// Start playing the selected sample. Call after FS1 press.
+void startSamplePlayback();
+
+// Stop the sample player immediately (no fade – caller handles fade logic)
+void stopSamplePlayback();
+
+// Returns true while the sample player is actively playing
+bool isSamplePlaying();
 
 #endif // SDCARD_H

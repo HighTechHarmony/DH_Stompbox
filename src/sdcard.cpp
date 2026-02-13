@@ -10,6 +10,13 @@ int sdEntryCount = 0;
 int sdBrowseIndex = 0;
 int sdBrowseViewportStart = 0;
 
+// Selected sample state
+bool sampleSelected = false;
+char selectedSamplePath[256] = "";
+
+// Note: AudioPlaySdWav samplePlayer is defined in audio.cpp
+// (must be in the same TU as AudioConnections for proper init order)
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -208,4 +215,63 @@ void sdNavigateInto(int index)
     }
 
     scanDirectory(newPath);
+}
+
+// ---------------------------------------------------------------------------
+// File selection & playback
+// ---------------------------------------------------------------------------
+
+void sdSelectFile(int entryIndex)
+{
+    if (entryIndex < 0 || entryIndex >= sdEntryCount)
+        return;
+    if (sdEntries[entryIndex].isDirectory)
+        return; // only files
+
+    // Build full path
+    if (sdAtRoot())
+    {
+        snprintf(selectedSamplePath, sizeof(selectedSamplePath),
+                 "/%s", sdEntries[entryIndex].name);
+    }
+    else
+    {
+        snprintf(selectedSamplePath, sizeof(selectedSamplePath),
+                 "%s/%s", sdCurrentPath, sdEntries[entryIndex].name);
+    }
+
+    sampleSelected = true;
+    Serial.print("SD: selected sample ");
+    Serial.println(selectedSamplePath);
+}
+
+void startSamplePlayback()
+{
+    if (!sampleSelected || !sdCardAvailable)
+        return;
+
+    // Stop any current playback first (allows instant re-trigger)
+    if (samplePlayer.isPlaying())
+    {
+        samplePlayer.stop();
+    }
+
+    samplePlayer.play(selectedSamplePath);
+
+    Serial.print("SD: playing ");
+    Serial.println(selectedSamplePath);
+}
+
+void stopSamplePlayback()
+{
+    if (samplePlayer.isPlaying())
+    {
+        samplePlayer.stop();
+        Serial.println("SD: sample stopped");
+    }
+}
+
+bool isSamplePlaying()
+{
+    return samplePlayer.isPlaying();
 }

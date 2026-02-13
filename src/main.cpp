@@ -8,6 +8,7 @@
 #include "menu.h"
 #include "display.h"
 #include "test.h"
+#include "sdcard.h"
 
 // Timing state
 unsigned long fs1ForcedUntilMs = 0;
@@ -44,12 +45,16 @@ void setup()
     Serial.println("=== SETUP COMPLETE ===");
 
     // Check for hardware test mode (FS1 held at startup)
+    // Must happen BEFORE initSDCard() because SD SPI uses pin 12 (MISO) which conflicts with FOOT1
     if (!digitalRead(FOOT1)) // FS1 is active low
     {
         Serial.println("*** ENTERING HARDWARE TEST MODE ***");
         hardwareTestMode();
         // Never returns
     }
+
+    // Initialize SD card after test mode check to avoid SPI pin conflict with FOOT1
+    initSDCard();
 }
 
 void loop()
@@ -120,9 +125,17 @@ void loop()
     }
 
     // Restart chord if not active (ensure continuous playback)
-    if (!chordActive && !chordSuppressed)
+    // Skip auto-restart for sample mode – samples have finite length
+    if (!chordActive && !chordSuppressed && currentSynthSound != SYNTHSND_SAMPLE)
     {
         startChord(effectiveVolume, currentChordTonic, currentKey, currentMode);
+    }
+
+    // Auto-stop when sample finishes playing
+    if (currentSynthSound == SYNTHSND_SAMPLE && chordActive && !chordFading && !isSamplePlaying())
+    {
+        stopSampleChord();
+        currentScreen = SCREEN_HOME;
     }
 
     // Read inputs
@@ -268,7 +281,6 @@ void loop()
         Serial.println("Volume display timeout (pot)");
     }
 
-
     // Effective FS1 seen by the rest of the loop (remains true for short taps)
     bool fs1 = fs1_raw || (now < fs1ForcedUntilMs);
 
@@ -280,9 +292,16 @@ void loop()
         // Only mute if not currently fading (let fades complete)
         if (!chordFading)
         {
-            myEffect.amplitude(0);
-            myEffect2.amplitude(0);
-            myEffect3.amplitude(0);
+            if (currentSynthSound == SYNTHSND_SAMPLE)
+            {
+                setSampleGain(0.0f);
+            }
+            else
+            {
+                myEffect.amplitude(0);
+                myEffect2.amplitude(0);
+                myEffect3.amplitude(0);
+            }
         }
     }
     else
@@ -290,10 +309,17 @@ void loop()
         // If chord is active and not fading, ensure amplitude reflects stored beepAmp
         if (chordActive && !chordFading)
         {
-            float perVoice = beepAmp / 3.0f;
-            myEffect.amplitude(perVoice);
-            myEffect2.amplitude(perVoice);
-            myEffect3.amplitude(perVoice);
+            if (currentSynthSound == SYNTHSND_SAMPLE)
+            {
+                setSampleGain(beepAmp);
+            }
+            else
+            {
+                float perVoice = beepAmp / 3.0f;
+                myEffect.amplitude(perVoice);
+                myEffect2.amplitude(perVoice);
+                myEffect3.amplitude(perVoice);
+            }
         }
     }
 
@@ -405,7 +431,8 @@ void loop()
     updatePitchDetection(frequency, probability, noteName, currentInstrumentIsBass);
 
     // Update chord in real-time while sampling (only when FS1 is held and NOT in FS volume control mode or tap tempo mode)
-    if (fs1 && lastDetectedFrequency > 0.0f && !fsVolumeControlActive && !tapTempoActive)
+    // Skip for sample mode – pitch detection doesn't affect sample playback
+    if (fs1 && lastDetectedFrequency > 0.0f && !fsVolumeControlActive && !tapTempoActive && currentSynthSound != SYNTHSND_SAMPLE)
     {
         updateChordTonic(lastDetectedFrequency, currentKey, currentMode);
     }
@@ -518,4 +545,3 @@ void loop()
 
     delay(50);
 }
-

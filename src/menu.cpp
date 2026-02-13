@@ -360,7 +360,15 @@ void handleMenuButton()
                 {
                     sdNavigateInto(entryIdx);
                 }
-                // Files: no action yet (selection TBD)
+                else
+                {
+                    // File selected – set as current sample
+                    sdSelectFile(entryIdx);
+                    currentSynthSound = SYNTHSND_SAMPLE;
+                    // Don't saveNVRAM — sample mode is session-only
+                    // (path can't be persisted, would cause dead FS on reboot)
+                    currentMenuLevel = MENU_SYNTHSND_SELECT;
+                }
             }
         }
     }

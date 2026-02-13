@@ -1,6 +1,7 @@
 #include "audio.h"
 #include "pitch.h"
 #include "NVRAM.h"
+#include "sdcard.h"
 
 // Define audio objects - Simplified: 2 oscillators per voice (primary + detuned)
 // Voice 1 (root): myEffect + myEffect1b
@@ -26,6 +27,13 @@ AudioMixer4 wetDryRight;    // mix dry (mixerRight) + wet (reverb R)
 
 // Synth voice mixer (combines oscillators for reverb input)
 AudioMixer4 synthMix; // combines all synth oscillators for reverb
+
+// Sample gain control mixers (one per channel)
+AudioMixer4 sampleGainL;
+AudioMixer4 sampleGainR;
+
+// WAV sample player (defined here so it's constructed before AudioConnections)
+AudioPlaySdWav samplePlayer;
 
 // Audio shield control
 AudioControlSGTL5000 audioShield;
@@ -83,20 +91,29 @@ AudioConnection patchInR(audioInput, 1, mixerRight, 0); // right input → mixer
 AudioConnection patchPitch(audioInput, 0, noteDetect, 0);
 AudioConnection patchPeak(audioInput, 0, peak1, 0);
 
-// Connect primary oscillators directly to main mixers (ch1, ch2, ch3)
-AudioConnection patchOsc1ToL(myEffect, 0, mixerLeft, 1);
-AudioConnection patchOsc1ToR(myEffect, 0, mixerRight, 1);
+// Oscillators 2 & 3 go directly to main mixers (ch2, ch3)
 AudioConnection patchOsc2ToL(myEffect2, 0, mixerLeft, 2);
 AudioConnection patchOsc2ToR(myEffect2, 0, mixerRight, 2);
 AudioConnection patchOsc3ToL(myEffect3, 0, mixerLeft, 3);
 AudioConnection patchOsc3ToR(myEffect3, 0, mixerRight, 3);
 
+// sampleGainL/R act as a selector between sample (ch0) and osc1 (ch1).
+// In synth mode: ch0=0, ch1=1.0 (osc1 passthrough).
+// In sample mode: ch0=volume, ch1=0 (sample only).
+AudioConnection patchSampL(samplePlayer, 0, sampleGainL, 0);   // sample L → gain L ch0
+AudioConnection patchSampR(samplePlayer, 1, sampleGainR, 0);   // sample R → gain R ch0
+AudioConnection patchOsc1ToGainL(myEffect, 0, sampleGainL, 1); // osc1 → gain L ch1
+AudioConnection patchOsc1ToGainR(myEffect, 0, sampleGainR, 1); // osc1 → gain R ch1
+// Combined output → main mixers ch1
+AudioConnection patchGainToMixL(sampleGainL, 0, mixerLeft, 1);
+AudioConnection patchGainToMixR(sampleGainR, 0, mixerRight, 1);
+
 // Connect all oscillators to synth mixer for reverb input
 AudioConnection patchSynth1(myEffect, 0, synthMix, 0);
 AudioConnection patchSynth2(myEffect2, 0, synthMix, 1);
 AudioConnection patchSynth3(myEffect3, 0, synthMix, 2);
-// Note: detuned oscillators (myEffect1b, myEffect2b, myEffect3b) are summed
-// with primary oscillators at the amplitude level, so no separate routing needed
+// Sample → synth mixer ch3 for reverb (direct from player, not through gain mixer)
+AudioConnection patchSampToReverb(samplePlayer, 0, synthMix, 3);
 
 // Reverb and output
 AudioConnection patchReverbIn(synthMix, 0, reverb, 0);
@@ -250,7 +267,79 @@ void stopAllOscillators()
 
     // Restore mixer gains to normal when stopping (in case arp mode left them muted)
     restoreMixerGains(0.8f);
+
+    // Stop sample player and restore osc1 routing through gain mixers
+    stopSamplePlayback();
+    setSampleGain(0.0f);
+    sampleGainL.gain(1, 1.0f); // restore osc1 passthrough
+    sampleGainR.gain(1, 1.0f);
 }
+
+// ===== Sample Chord Functions =====
+
+void setSampleGain(float gain)
+{
+    sampleGainL.gain(0, gain);
+    sampleGainR.gain(0, gain);
+    // Reverb feed proportional to sample volume
+    synthMix.gain(3, gain);
+    // Note: osc1 passthrough (ch1) is managed by startSampleChord/stopAllOscillators
+}
+
+void startSampleChord(float potNorm)
+{
+    if (!sampleSelected || strlen(selectedSamplePath) == 0)
+    {
+        Serial.println(">>> startSampleChord: no sample selected!");
+        return;
+    }
+
+    // Silence all synth oscillators and reset routing
+    stopAllOscillators();
+
+    // Mute osc1 passthrough (sample takes over ch1)
+    sampleGainL.gain(1, 0.0f);
+    sampleGainR.gain(1, 0.0f);
+
+    // Set sample gain from pot
+    setSampleGain(potNorm);
+    beepAmp = potNorm;
+
+    // Start playback
+    startSamplePlayback();
+    delay(10); // allow player to open file and start
+
+    // Verify playback actually started
+    if (!isSamplePlaying())
+    {
+        Serial.println(">>> SAMPLE FAILED TO START");
+        setSampleGain(0.0f);
+        sampleGainL.gain(1, 1.0f); // restore osc1 passthrough
+        sampleGainR.gain(1, 1.0f);
+        return; // don't set chordActive — allows retry on next FS1 press
+    }
+
+    chordActive = true;
+    chordFading = false;
+    chordSuppressed = false;
+    digitalWrite(LED_BUILTIN, HIGH);
+
+    Serial.print(">>> SAMPLE START: ");
+    Serial.println(selectedSamplePath);
+}
+
+void stopSampleChord()
+{
+    stopAllOscillators(); // stops sample, resets gain, restores osc1 routing
+    beepAmp = 0.0f;
+    chordActive = false;
+    chordFading = false;
+    chordSuppressed = true;
+    digitalWrite(LED_BUILTIN, LOW);
+    Serial.println(">>> SAMPLE STOP");
+}
+
+// ===== End Sample Chord Functions =====
 
 void initSineSound(float tonic, float third, float fifth, float octaveMul, float perVoice)
 {
@@ -389,6 +478,13 @@ void initStringsSound(float tonic, float third, float fifth, float octaveMul, fl
 
 void startChord(float potNorm, float tonicFreq, int keyNote, int mode)
 {
+    // --- Sample mode: play the selected WAV file instead of oscillators ---
+    if (currentSynthSound == SYNTHSND_SAMPLE)
+    {
+        startSampleChord(potNorm);
+        return;
+    }
+
     // choose tonic: passed in or last detected
     float tonic = (tonicFreq > 1.0f) ? tonicFreq : lastDetectedFrequency;
     bool hasValidPitch = (tonic > 0.0f);
@@ -607,6 +703,27 @@ void stopChord()
         stopArpTimer();
     }
 
+    // --- Sample mode fade/stop ---
+    if (currentSynthSound == SYNTHSND_SAMPLE)
+    {
+        if (chordFadeDurationMs > 0)
+        {
+            chordFading = true;
+            chordFadeStartMs = millis();
+            chordFadeStartAmp = beepAmp;
+            Serial.println(">>> SAMPLE FADE START");
+            return;
+        }
+        // Immediate stop
+        stopAllOscillators(); // stops sample, oscillators, restores routing
+        digitalWrite(LED_BUILTIN, LOW);
+        chordActive = false;
+        chordSuppressed = true;
+        beepAmp = 0.0f;
+        Serial.println(">>> SAMPLE END");
+        return;
+    }
+
     // If a fade duration is set, perform a non-blocking fade-out
     if (chordFadeDurationMs > 0)
     {
@@ -635,6 +752,14 @@ void updateChordVolume(float potNorm)
     {
         if (!chordFading)
         {
+            // --- Sample mode volume ---
+            if (currentSynthSound == SYNTHSND_SAMPLE)
+            {
+                setSampleGain(potNorm);
+                beepAmp = potNorm;
+                return;
+            }
+
             // Apply volume based on current sound
             if (currentSynthSound == 1) // Organ
             {
@@ -689,6 +814,11 @@ void updateChordFade()
         {
             // Fade complete
             stopAllOscillators();
+            if (currentSynthSound == SYNTHSND_SAMPLE)
+            {
+                stopSamplePlayback();
+                setSampleGain(0.0f);
+            }
             digitalWrite(LED_BUILTIN, LOW);
             chordFading = false;
             chordActive = false;
@@ -700,6 +830,14 @@ void updateChordFade()
         {
             float t = (float)elapsed / (float)chordFadeDurationMs; // 0..1
             float curAmp = chordFadeStartAmp * (1.0f - t);
+
+            // --- Sample mode fade ---
+            if (currentSynthSound == SYNTHSND_SAMPLE)
+            {
+                setSampleGain(curAmp);
+                beepAmp = curAmp;
+                return;
+            }
 
             // Calculate per-oscillator amplitude based on current sound
             if (currentSynthSound == 1) // Organ
@@ -749,7 +887,7 @@ void updateChordFade()
 void setupAudio()
 {
     // Allocate audio memory
-    AudioMemory(64); // Reduced from 128 since we have fewer objects
+    AudioMemory(96); // Increased for SD WAV playback
     Serial.println("Audio memory allocated");
 
     // Initialize audio shield
@@ -827,7 +965,13 @@ void setupAudio()
     synthMix.gain(0, 1.0f);
     synthMix.gain(1, 1.0f);
     synthMix.gain(2, 1.0f);
-    synthMix.gain(3, 0.0f); // unused
+    synthMix.gain(3, 0.0f); // sample player (enabled when in sample mode)
+
+    // Configure sample gain mixers: ch0=sample (muted), ch1=osc1 (passthrough)
+    sampleGainL.gain(0, 0.0f);
+    sampleGainL.gain(1, 1.0f);
+    sampleGainR.gain(0, 0.0f);
+    sampleGainR.gain(1, 1.0f);
 
     Serial.println("Synth mixer configured");
 
