@@ -10,9 +10,10 @@ int currentOctaveShift = 0;           // -1..2
 bool currentInstrumentIsBass = false; // false=Guitar (default), true=Bass
 // Muting setting persisted (false=Disabled, true=Enabled)
 bool currentMutingEnabled = false;
-int currentSynthSound = 0; // 0=Sine (default), 1=Organ
-int currentOutputMode = 0; // 0=Mix, 1=Split
-int currentStopMode = 0;   // 0=Fade (default), 1=Immediate
+int currentSynthSound = 0;  // 0=Sine (default), 1=Organ
+int currentOutputMode = 0;  // 0=Mix, 1=Split
+int currentStopMode = 0;    // 0=Fade (default), 1=Immediate
+int currentSeventhMode = 0; // 0=Disable (default), 1=Diatonic 7th, 2=Diminished 7th
 
 void saveNVRAM()
 {
@@ -29,6 +30,7 @@ void saveNVRAM()
     EEPROM.write(NVRAM_ARP_ADDR, (uint8_t)currentArpMode);
     EEPROM.write(NVRAM_OUTPUT_ADDR, (uint8_t)currentOutputMode);
     EEPROM.write(NVRAM_STOPMODE_ADDR, (uint8_t)currentStopMode);
+    EEPROM.write(NVRAM_SEVENTH_ADDR, (uint8_t)currentSeventhMode);
     // store octave shifted by +2 to fit into unsigned byte (valid -1..2 -> 1..4)
     int8_t enc = currentOctaveShift + 2;
     if (enc < 0)
@@ -115,6 +117,13 @@ void loadNVRAM()
         {
             chordFadeDurationMs = 1500;
         }
+        // load seventh mode (0=Disable, 1=Diatonic 7th, 2=Diminished 7th)
+        uint8_t sv = EEPROM.read(NVRAM_SEVENTH_ADDR);
+        if (sv <= 2) // validate range
+            currentSeventhMode = sv;
+        Serial.print(" seventhMode=");
+        const char *seventhModeNames[] = {"Disable", "dia7", "dim7"};
+        Serial.println(seventhModeNames[currentSeventhMode]);
     }
     else
     {

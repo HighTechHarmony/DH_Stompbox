@@ -16,4 +16,10 @@ void updatePitchDetection(float &frequency, float &probability, const char *&not
 // Reset pitch detection state (call when starting fresh sampling)
 void resetPitchDetection();
 
+// Connect/disconnect the noteDetect input.  YIN only runs when connected,
+// so disconnect whenever FS1 is not held to save CPU (and SPI headroom
+// for SD sample streaming).
+void enablePitchDetection();
+void disablePitchDetection();
+
 #endif // PITCH_H

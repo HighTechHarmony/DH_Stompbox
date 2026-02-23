@@ -226,6 +226,107 @@ float getDiatonicFifth(float noteFreq, int keyNote, int mode)
     return powf(2.0f, fifthSemitones / 12.0f);
 }
 
+// Determine seventh interval ratio above the chord root.
+// Returns 0.0f when disabled (currentSeventhMode==0).
+// When enabled, the result replaces the fifth voice.
+//   currentSeventhMode 1 = Diatonic 7th (major 7 or minor 7 depending on scale degree)
+//   currentSeventhMode 2 = Diminished 7th (always 9 semitones)
+float getSeventhInterval(float noteFreq, int keyNote, int mode)
+{
+    if (currentSeventhMode == 0)
+        return 0.0f; // Disabled
+
+    if (currentSeventhMode == 2)
+    {
+        // Diminished 7th: always 9 semitones
+        return powf(2.0f, 9.0f / 12.0f);
+    }
+
+    // Diatonic 7th (currentSeventhMode == 1)
+    float midiNote = 12.0f * log2f(noteFreq / 440.0f) + 69.0f;
+    int noteClass = ((int)round(midiNote)) % 12;
+    int relativePosition = (noteClass - keyNote + 12) % 12;
+
+    int seventhSemitones = 10; // default: minor 7th
+
+    if (mode == 0) // Major
+    {
+        // Major scale degrees (semitones from key root): 0,2,4,5,7,9,11
+        // I(0)=maj7(11), ii(2)=min7(10), iii(4)=min7(10), IV(5)=maj7(11),
+        // V(7)=min7(10) [dominant], vi(9)=min7(10), vii°(11)=min7(10) [half-dim]
+        switch (relativePosition)
+        {
+        case 0:
+            seventhSemitones = 11;
+            break; // I   -> major 7th
+        case 2:
+            seventhSemitones = 10;
+            break; // ii  -> minor 7th
+        case 4:
+            seventhSemitones = 10;
+            break; // iii -> minor 7th
+        case 5:
+            seventhSemitones = 11;
+            break; // IV  -> major 7th
+        case 7:
+            seventhSemitones = 10;
+            break; // V   -> minor 7th (dominant 7th)
+        case 9:
+            seventhSemitones = 10;
+            break; // vi  -> minor 7th
+        case 11:
+            seventhSemitones = 10;
+            break; // vii°-> minor 7th (half-dim)
+        default:
+            seventhSemitones = 10;
+            break; // chromatic note: default minor 7th
+        }
+    }
+    else if (mode == 1) // Natural minor
+    {
+        // Natural minor degrees (semitones from key root): 0,2,3,5,7,8,10
+        // i(0)=min7(10), ii°(2)=min7(10), III(3)=maj7(11), iv(5)=min7(10),
+        // v(7)=min7(10), VI(8)=maj7(11), VII(10)=min7(10) [dominant]
+        switch (relativePosition)
+        {
+        case 0:
+            seventhSemitones = 10;
+            break; // i    -> minor 7th
+        case 2:
+            seventhSemitones = 10;
+            break; // ii°  -> minor 7th (half-dim)
+        case 3:
+            seventhSemitones = 11;
+            break; // III  -> major 7th
+        case 5:
+            seventhSemitones = 10;
+            break; // iv   -> minor 7th
+        case 7:
+            seventhSemitones = 10;
+            break; // v    -> minor 7th
+        case 8:
+            seventhSemitones = 11;
+            break; // VI   -> major 7th
+        case 10:
+            seventhSemitones = 10;
+            break; // VII  -> minor 7th (dominant)
+        default:
+            seventhSemitones = 10;
+            break;
+        }
+    }
+    else if (mode == 2) // Fixed Major
+    {
+        seventhSemitones = 11; // always major 7th
+    }
+    else if (mode == 3) // Fixed Minor
+    {
+        seventhSemitones = 10; // always minor 7th
+    }
+
+    return powf(2.0f, seventhSemitones / 12.0f);
+}
+
 void restoreMixerGains(float synthGain)
 {
     // Restore mixer gains respecting the current output mode
@@ -502,6 +603,10 @@ void startChord(float potNorm, float tonicFreq, int keyNote, int mode)
     const float third = getDiatonicThird(tonic, keyNote, mode);
     const float fifth = getDiatonicFifth(tonic, keyNote, mode);
 
+    // Compute seventh interval (replaces fifth when enabled)
+    const float seventh = getSeventhInterval(tonic, keyNote, mode);
+    const float thirdVoiceInterval = (seventh > 0.0f) ? seventh : fifth;
+
     // apply octave shift
     float octaveMul = powf(2.0f, (float)currentOctaveShift);
 
@@ -511,19 +616,19 @@ void startChord(float potNorm, float tonicFreq, int keyNote, int mode)
     // Initialize sound based on currentSynthSound selection
     if (currentSynthSound == 1) // Organ
     {
-        initOrganSound(tonic, third, fifth, octaveMul, perVoice);
+        initOrganSound(tonic, third, thirdVoiceInterval, octaveMul, perVoice);
     }
     else if (currentSynthSound == 2) // Rhodes
     {
-        initRhodesSound(tonic, third, fifth, octaveMul, perVoice);
+        initRhodesSound(tonic, third, thirdVoiceInterval, octaveMul, perVoice);
     }
     else if (currentSynthSound == 3) // Strings
     {
-        initStringsSound(tonic, third, fifth, octaveMul, perVoice);
+        initStringsSound(tonic, third, thirdVoiceInterval, octaveMul, perVoice);
     }
     else // Sine (default)
     {
-        initSineSound(tonic, third, fifth, octaveMul, perVoice);
+        initSineSound(tonic, third, thirdVoiceInterval, octaveMul, perVoice);
     }
 
     if (!chordActive)
@@ -566,6 +671,10 @@ void updateChordTonic(float tonicFreq, int keyNote, int mode)
     const float third = getDiatonicThird(tonicFreq, keyNote, mode);
     const float fifth = getDiatonicFifth(tonicFreq, keyNote, mode);
 
+    // Compute seventh interval (replaces fifth when enabled)
+    const float seventh = getSeventhInterval(tonicFreq, keyNote, mode);
+    const float thirdVoiceInterval = (seventh > 0.0f) ? seventh : fifth;
+
     // apply octave shift
     float octaveMul = powf(2.0f, (float)currentOctaveShift);
 
@@ -575,7 +684,7 @@ void updateChordTonic(float tonicFreq, int keyNote, int mode)
         // update base frequencies (vibrato will modulate these)
         organBaseRootFreq = tonicFreq * octaveMul;
         organBaseThirdFreq = tonicFreq * third * octaveMul;
-        organBaseFifthFreq = tonicFreq * fifth * octaveMul;
+        organBaseFifthFreq = tonicFreq * thirdVoiceInterval * octaveMul;
 
         myEffect.frequency(organBaseRootFreq);
         myEffect1b.frequency(organBaseRootFreq * organDetune);
@@ -590,8 +699,8 @@ void updateChordTonic(float tonicFreq, int keyNote, int mode)
         myEffect1b.frequency(tonicFreq * octaveMul * rhodesDetune);
         myEffect2.frequency(tonicFreq * third * octaveMul);
         myEffect2b.frequency(tonicFreq * third * octaveMul * rhodesDetune);
-        myEffect3.frequency(tonicFreq * fifth * octaveMul);
-        myEffect3b.frequency(tonicFreq * fifth * octaveMul * rhodesDetune);
+        myEffect3.frequency(tonicFreq * thirdVoiceInterval * octaveMul);
+        myEffect3b.frequency(tonicFreq * thirdVoiceInterval * octaveMul * rhodesDetune);
     }
     else if (currentSynthSound == 3) // Strings
     {
@@ -599,14 +708,14 @@ void updateChordTonic(float tonicFreq, int keyNote, int mode)
         myEffect1b.frequency(tonicFreq * octaveMul * stringsDetune);
         myEffect2.frequency(tonicFreq * third * octaveMul);
         myEffect2b.frequency(tonicFreq * third * octaveMul * stringsDetune);
-        myEffect3.frequency(tonicFreq * fifth * octaveMul);
-        myEffect3b.frequency(tonicFreq * fifth * octaveMul * stringsDetune);
+        myEffect3.frequency(tonicFreq * thirdVoiceInterval * octaveMul);
+        myEffect3b.frequency(tonicFreq * thirdVoiceInterval * octaveMul * stringsDetune);
     }
     else // Sine
     {
         myEffect.frequency(tonicFreq * octaveMul);
         myEffect2.frequency(tonicFreq * third * octaveMul);
-        myEffect3.frequency(tonicFreq * fifth * octaveMul);
+        myEffect3.frequency(tonicFreq * thirdVoiceInterval * octaveMul);
     }
 
     // If we were waiting for pitch detection and now have it, start arpeggiator if needed
@@ -988,6 +1097,9 @@ void setupAudio()
 }
 
 // Arpeggiator timer ISR
+// AudioMixer4::gain() writes a single 32-bit aligned word (volume[]).  On
+// Cortex-M7 (Teensy 4.1) such stores are atomic, so this is safe to call
+// from an IntervalTimer ISR even though the audio ISR reads the same data.
 void arpTimerISR()
 {
     if (!chordActive || chordFading)

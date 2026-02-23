@@ -1,4 +1,5 @@
 #include "sdcard.h"
+#include <Audio.h>
 
 // ---------------------------------------------------------------------------
 // SD-card state
@@ -98,6 +99,14 @@ bool initSDCard()
 
 bool scanDirectory(const char *path)
 {
+    // AudioPlaySdWav::update() runs in the audio ISR and reads the SD card over
+    // the same SPI bus.  The SD library is not reentrant, so any concurrent
+    // main-loop SD access while a sample is playing corrupts SPI state and
+    // hard-freezes the MCU.  Stopping the player first is safe: once stopped,
+    // update() generates silence without touching the SPI bus.
+    if (samplePlayer.isPlaying())
+        samplePlayer.stop();
+
     sdEntryCount = 0;
     sdBrowseIndex = 0;
     sdBrowseViewportStart = 0;

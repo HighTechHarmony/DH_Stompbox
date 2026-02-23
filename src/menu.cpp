@@ -27,6 +27,7 @@ int arpViewportStart = 0;
 int configViewportStart = 0;
 int outputViewportStart = 0;
 int stopModeViewportStart = 0;
+int seventhViewportStart = 0;
 
 // Menu display names
 const char *menuTopItems[] = {"MusicKey", "Maj/Min", "Octave", "SynthSnd", "Arp/Poly", "Config"};
@@ -54,8 +55,8 @@ const int MUTING_MENU_COUNT = 2;
 int menuMutingIndex = 0; // 0=Disabled, 1=Enabled
 
 // Synth sound options
-const char *synthSndMenuNames[] = {"Sine", "Organ", "Rhodes", "Strings", "SDcard"};
-const int SYNTHSND_MENU_COUNT = 5;
+const char *synthSndMenuNames[] = {"Sine", "Organ", "Rhodes", "Strings", "SDcard", "7th"};
+const int SYNTHSND_MENU_COUNT = 6;
 
 // Arpeggiator options
 const char *arpMenuNames[] = {"Arp", "Poly"};
@@ -73,6 +74,11 @@ const int OUTPUT_MENU_COUNT = 2;
 const char *stopModeMenuNames[] = {"Fade", "Immediate"};
 const int STOPMODE_MENU_COUNT = 2;
 int menuStopModeIndex = 0; // 0=Fade, 1=Immediate
+
+// Seventh mode options
+const char *seventhMenuNames[] = {"Disable", "dia7", "dim7"};
+const int SEVENTH_MENU_COUNT = 3;
+int menuSeventhIndex = 0; // 0=Disable, 1=dia7, 2=dim7
 
 void handleMenuEncoder(int delta)
 {
@@ -172,6 +178,14 @@ void handleMenuEncoder(int delta)
             menuStopModeIndex = 0;
         if (menuStopModeIndex > STOPMODE_MENU_COUNT)
             menuStopModeIndex = STOPMODE_MENU_COUNT; // allow Parent
+    }
+    else if (currentMenuLevel == MENU_SEVENTH_SELECT)
+    {
+        menuSeventhIndex += delta;
+        if (menuSeventhIndex < 0)
+            menuSeventhIndex = 0;
+        if (menuSeventhIndex > SEVENTH_MENU_COUNT)
+            menuSeventhIndex = SEVENTH_MENU_COUNT; // allow Parent
     }
 }
 
@@ -323,6 +337,12 @@ void handleMenuButton()
             else
                 scanDirectory(sdCurrentPath);
         }
+        else if (menuSynthSndIndex == 5) // 7th
+        {
+            // Enter 7th mode submenu
+            currentMenuLevel = MENU_SEVENTH_SELECT;
+            menuSeventhIndex = currentSeventhMode; // Initialize to current setting
+        }
         else
         {
             currentSynthSound = menuSynthSndIndex;
@@ -454,6 +474,20 @@ void handleMenuButton()
             }
             saveNVRAM();
             currentMenuLevel = MENU_CONFIG_SELECT;
+        }
+    }
+    else if (currentMenuLevel == MENU_SEVENTH_SELECT)
+    {
+        // If Parent selected, return to SynthSnd. Otherwise apply seventh mode.
+        if (menuSeventhIndex == SEVENTH_MENU_COUNT)
+        {
+            currentMenuLevel = MENU_SYNTHSND_SELECT;
+        }
+        else
+        {
+            currentSeventhMode = menuSeventhIndex; // 0=Disable, 1=dia7, 2=dim7
+            saveNVRAM();
+            currentMenuLevel = MENU_SYNTHSND_SELECT;
         }
     }
 }

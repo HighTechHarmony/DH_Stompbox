@@ -17,7 +17,8 @@ enum MenuLevel
     MENU_ARP_SELECT,
     MENU_CONFIG_SELECT,
     MENU_OUTPUT_SELECT,
-    MENU_STOPMODE_SELECT
+    MENU_STOPMODE_SELECT,
+    MENU_SEVENTH_SELECT
 };
 
 extern MenuLevel currentMenuLevel;
@@ -32,6 +33,7 @@ extern int menuArpIndex;
 extern int menuConfigIndex;
 extern int menuOutputIndex;
 extern int menuStopModeIndex;
+extern int menuSeventhIndex;
 
 // Viewport tracking for scrolling submenus
 extern int keyViewportStart;
@@ -45,6 +47,7 @@ extern int arpViewportStart;
 extern int configViewportStart;
 extern int outputViewportStart;
 extern int stopModeViewportStart;
+extern int seventhViewportStart;
 
 // Menu display names
 extern const char *menuTopItems[];
@@ -71,6 +74,8 @@ extern const char *outputMenuNames[];
 extern const int OUTPUT_MENU_COUNT;
 extern const char *stopModeMenuNames[];
 extern const int STOPMODE_MENU_COUNT;
+extern const char *seventhMenuNames[];
+extern const int SEVENTH_MENU_COUNT;
 
 extern bool currentInstrumentIsBass;
 

@@ -60,6 +60,7 @@ void setupAudio();
 void setReverbWet(float wet);
 // mode: 0=Major, 1=Minor, 2=Fixed Major, 3=Fixed Minor
 float getDiatonicThird(float noteFreq, int keyNote, int mode);
+float getSeventhInterval(float noteFreq, int keyNote, int mode);
 void stopAllOscillators();
 void initSineSound(float tonic, float third, float fifth, float octaveMul, float perVoice);
 void initOrganSound(float tonic, float third, float fifth, float octaveMul, float perVoice);

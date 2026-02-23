@@ -469,6 +469,55 @@ void renderMenuScreen()
                 display.println("^");
         }
     }
+    else if (currentMenuLevel == MENU_SEVENTH_SELECT)
+    {
+        // 7th mode selection submenu
+        display.setCursor(0, 0);
+        display.println("7th");
+
+        int totalCount = SEVENTH_MENU_COUNT + 1; // includes Parent
+        int visible = 3;
+
+        // Stable viewport scrolling
+        if (menuSeventhIndex < seventhViewportStart)
+        {
+            seventhViewportStart = menuSeventhIndex;
+        }
+        else if (menuSeventhIndex >= seventhViewportStart + visible)
+        {
+            seventhViewportStart = menuSeventhIndex - visible + 1;
+        }
+
+        if (seventhViewportStart < 0)
+            seventhViewportStart = 0;
+        if (seventhViewportStart > totalCount - visible)
+            seventhViewportStart = totalCount - visible;
+        if (seventhViewportStart < 0)
+            seventhViewportStart = 0;
+
+        for (int i = 0; i < visible; i++)
+        {
+            int idx = seventhViewportStart + i;
+            if (idx >= totalCount)
+                break;
+
+            int y = 18 + i * 18;
+            display.setCursor(0, y);
+            if (idx == menuSeventhIndex)
+            {
+                display.print("> ");
+            }
+            else
+            {
+                display.print("  ");
+            }
+
+            if (idx < SEVENTH_MENU_COUNT)
+                display.println(seventhMenuNames[idx]);
+            else
+                display.println("^");
+        }
+    }
     else if (currentMenuLevel == MENU_SDCARD_BROWSE)
     {
         // SD card file browser

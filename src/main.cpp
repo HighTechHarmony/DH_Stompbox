@@ -414,6 +414,8 @@ void loop()
     // FS1 press edge: if chord was suppressed (stopped by FS2), re-enable it (unless in FS volume control mode, within settling time, or in tap tempo mode)
     if (fs1_raw && !prevFs1 && !fsVolumeControlActive && now >= fsIgnoreInputsUntilMs && !tapTempoActive)
     {
+        // Connect pitch detector now that we need it
+        enablePitchDetection();
         // Reset pitch detection to clear stale frequency data
         resetPitchDetection();
 
@@ -437,9 +439,10 @@ void loop()
         updateChordTonic(lastDetectedFrequency, currentKey, currentMode);
     }
 
-    // FS1 release edge: start Rhodes decay if Rhodes is active
+    // FS1 release edge: disconnect pitch detector and start Rhodes decay if active
     if (!fs1_raw && prevFs1)
     {
+        disablePitchDetection();
         startRhodesDecay();
     }
 

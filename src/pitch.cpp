@@ -25,13 +25,17 @@ void setupPitchDetection()
     Serial.print("Pitch detector initialized with threshold ");
     Serial.println(NOTE_DETECT_THRESHOLD);
 
-    // create the connection at runtime so initialization order is safe
+    // Create the connection at runtime so initialization order is safe,
+    // then immediately disconnect it.  enablePitchDetection() / disablePitchDetection()
+    // connect/disconnect on FS1 press/release so the expensive YIN algorithm
+    // only runs while the footswitch is actually held.
     if (!patchPitchPtr)
     {
-        // audioInput is declared in audio.h as extern; include audio.h if needed
         patchPitchPtr = new AudioConnection(audioInput, 0, noteDetect, 0);
         Serial.println("patchPitch connection created");
     }
+    patchPitchPtr->disconnect();
+    Serial.println("patchPitch disconnected (idle until FS1 pressed)");
 }
 
 void updatePitchDetection(float &frequency, float &probability, const char *&noteName, bool currentInstrumentIsBass)
@@ -151,4 +155,26 @@ void resetPitchDetection()
     lastDetectedFrequency = 0.0f;
 
     Serial.println("Pitch detection reset");
+}
+
+void enablePitchDetection()
+{
+    if (patchPitchPtr)
+    {
+        AudioNoInterrupts();
+        patchPitchPtr->connect();
+        AudioInterrupts();
+        Serial.println("Pitch detection enabled");
+    }
+}
+
+void disablePitchDetection()
+{
+    if (patchPitchPtr)
+    {
+        AudioNoInterrupts();
+        patchPitchPtr->disconnect();
+        AudioInterrupts();
+        Serial.println("Pitch detection disabled");
+    }
 }
