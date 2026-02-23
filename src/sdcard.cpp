@@ -14,6 +14,7 @@ int sdBrowseViewportStart = 0;
 // Selected sample state
 bool sampleSelected = false;
 char selectedSamplePath[256] = "";
+bool sampleLoopMode = false; // parsed from filename: 'L' = loop, 'S' (or unknown) = single-shot
 
 // Note: AudioPlaySdWav samplePlayer is defined in audio.cpp
 // (must be in the same TU as AudioConnections for proper init order)
@@ -250,8 +251,16 @@ void sdSelectFile(int entryIndex)
     }
 
     sampleSelected = true;
+
+    // Parse loop/single flag from filename convention: NNX-*.wav
+    // where NN = 2-digit slot, X = 'L' (loop) or 'S' (single-shot).
+    // Check character at index 2 of the bare filename.
+    const char *bare = sdEntries[entryIndex].name;
+    sampleLoopMode = (strlen(bare) > 2 && (bare[2] == 'L' || bare[2] == 'l'));
+
     Serial.print("SD: selected sample ");
-    Serial.println(selectedSamplePath);
+    Serial.print(selectedSamplePath);
+    Serial.println(sampleLoopMode ? " [LOOP]" : " [SINGLE]");
 }
 
 void startSamplePlayback()

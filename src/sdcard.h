@@ -34,6 +34,7 @@ extern int sdBrowseViewportStart;
 // Selected sample state
 extern bool sampleSelected;          // true when a .wav has been chosen
 extern char selectedSamplePath[256]; // full path to the selected .wav
+extern bool sampleLoopMode;          // true when filename encodes 'L' (loop), false for 'S' (single-shot)
 
 // WAV player object (mono – feeds into synth mixer for reverb)
 extern AudioPlaySdWav samplePlayer;

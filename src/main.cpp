@@ -131,11 +131,20 @@ void loop()
         startChord(effectiveVolume, currentChordTonic, currentKey, currentMode);
     }
 
-    // Auto-stop when sample finishes playing
+    // Auto-stop or loop when sample finishes playing
     if (currentSynthSound == SYNTHSND_SAMPLE && chordActive && !chordFading && !isSamplePlaying())
     {
-        stopSampleChord();
-        currentScreen = SCREEN_HOME;
+        if (sampleLoopMode)
+        {
+            // Loop mode: restart immediately without stopping the chord
+            startSamplePlayback();
+        }
+        else
+        {
+            // Single-shot: playback is done, stop and return to home
+            stopSampleChord();
+            currentScreen = SCREEN_HOME;
+        }
     }
 
     // Read inputs
