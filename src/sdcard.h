@@ -75,4 +75,8 @@ void stopSamplePlayback();
 // Returns true while the sample player is actively playing
 bool isSamplePlaying();
 
+// Get just the filename (no path) of the currently selected sample
+// Returns empty string if no sample is selected
+const char *getCurrentSampleFilename();
+
 #endif // SDCARD_H

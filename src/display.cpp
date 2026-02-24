@@ -115,6 +115,20 @@ void renderHomeScreen(const char *noteName, float frequency)
         display.setCursor(0, y);
         display.print(frequency, 1);
         display.print(" Hz");
+        y += 10;
+    }
+
+    // Display sample filename if playing (outside frequency check)
+    if (isSamplePlaying())
+    {
+        const char *filename = getCurrentSampleFilename();
+        if (filename[0] != '\0') // Check if not empty
+        {
+            display.setCursor(0, y);
+            display.setTextSize(1);
+            // Display filename (may be truncated by screen width)
+            display.print(filename);
+        }
     }
 
     display.display();

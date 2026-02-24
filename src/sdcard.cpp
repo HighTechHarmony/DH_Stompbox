@@ -231,6 +231,35 @@ void sdNavigateInto(int index)
 // File selection & playback
 // ---------------------------------------------------------------------------
 
+// Helper: case-insensitive substring search
+bool containsSubstrIgnoreCase(const char *haystack, const char *needle)
+{
+    if (!haystack || !needle)
+        return false;
+
+    int haystackLen = strlen(haystack);
+    int needleLen = strlen(needle);
+
+    if (needleLen > haystackLen)
+        return false;
+
+    for (int i = 0; i <= haystackLen - needleLen; i++)
+    {
+        bool match = true;
+        for (int j = 0; j < needleLen; j++)
+        {
+            if (tolower(haystack[i + j]) != tolower(needle[j]))
+            {
+                match = false;
+                break;
+            }
+        }
+        if (match)
+            return true;
+    }
+    return false;
+}
+
 void sdSelectFile(int entryIndex)
 {
     if (entryIndex < 0 || entryIndex >= sdEntryCount)
@@ -252,11 +281,28 @@ void sdSelectFile(int entryIndex)
 
     sampleSelected = true;
 
-    // Parse loop/single flag from filename convention: NNX-*.wav
-    // where NN = 2-digit slot, X = 'L' (loop) or 'S' (single-shot).
-    // Check character at index 2 of the bare filename.
+    // Parse loop/single flag from filename conventions:
+    // Format 1: NNX-*.wav where NN = 2-digit slot, X = 'L' (loop) or 'S' (single-shot)
+    // Format 2: NN_loop or NN_single (case-insensitive)
     const char *bare = sdEntries[entryIndex].name;
-    sampleLoopMode = (strlen(bare) > 2 && (bare[2] == 'L' || bare[2] == 'l'));
+
+    // Check for "_loop" or "_single" in filename (case-insensitive)
+    bool hasLoopKeyword = containsSubstrIgnoreCase(bare, "_loop");
+    bool hasSingleKeyword = containsSubstrIgnoreCase(bare, "_single");
+
+    if (hasLoopKeyword)
+    {
+        sampleLoopMode = true;
+    }
+    else if (hasSingleKeyword)
+    {
+        sampleLoopMode = false;
+    }
+    else
+    {
+        // Fall back to original format: check character at index 2
+        sampleLoopMode = (strlen(bare) > 2 && (bare[2] == 'L' || bare[2] == 'l'));
+    }
 
     Serial.print("SD: selected sample ");
     Serial.print(selectedSamplePath);
@@ -292,4 +338,17 @@ void stopSamplePlayback()
 bool isSamplePlaying()
 {
     return samplePlayer.isPlaying();
+}
+
+const char *getCurrentSampleFilename()
+{
+    if (!sampleSelected)
+        return "";
+
+    // Find the last '/' in the path to extract just the filename
+    const char *lastSlash = strrchr(selectedSamplePath, '/');
+    if (lastSlash != NULL)
+        return lastSlash + 1; // Return pointer to character after the last '/'
+    else
+        return selectedSamplePath; // No slash found, return the whole path
 }
