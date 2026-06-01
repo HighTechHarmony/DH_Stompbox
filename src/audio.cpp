@@ -1105,6 +1105,11 @@ void arpTimerISR()
     if (!chordActive || chordFading)
         return;
 
+    // Don't touch mixer gains in sample mode — sample audio passes through
+    // mixer channel 1 which the arp ISR would otherwise mute for 2/3 of the cycle.
+    if (currentSynthSound == SYNTHSND_SAMPLE)
+        return;
+
     // Mute all synth voices first
     // Note: In split mode, only right channel has synth (left has guitar)
     mixerLeft.gain(1, 0.0f);
@@ -1202,6 +1207,21 @@ void updateArpeggiator()
         {
             stopArpTimer();
         }
+        return;
+    }
+
+    // Arpeggiator is incompatible with sample playback — sample audio
+    // shares mixer channel 1 which the arp ISR would cycle on/off.
+    // Silently disable arp while in sample mode; the user's arp/poly
+    // setting in NVRAM is preserved and restored on next synth sound.
+    if (currentSynthSound == SYNTHSND_SAMPLE)
+    {
+        if (arpTimerActive)
+        {
+            stopArpTimer();
+        }
+        // Ensure all voices are on for poly (sample) mode
+        restoreMixerGains(0.8f);
         return;
     }
 
